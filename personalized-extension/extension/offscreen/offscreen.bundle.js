@@ -53,7 +53,7 @@
     speechRate: { type: "number", range: [0.5, 2], description: "Text-to-speech rate" },
     fixContrast: { type: "boolean", description: "Fix low-contrast text" },
     autoWcagFix: { type: "boolean", description: "Auto-fix accessibility issues" },
-    wcagRiskyFixes: { type: "boolean", description: "Enable risky WCAG fixes (heading re-tag, ARIA strip, target size) \u2014 default off" },
+    wcagRiskyFixes: { type: "boolean", description: "Also run the risky WCAG fixes that change page structure (heading re-tag, ARIA strip, nested control unwrap, target size). Off by default" },
     autoDescribe: { type: "boolean", description: "AI image descriptions" },
     autoFixLabels: { type: "boolean", description: "AI-generated form labels" },
     showCaptions: { type: "boolean", description: "Turn on captions the media already has (no AI)" },
@@ -80,7 +80,8 @@
       for (const key of keys) {
         const m = settingsMeta[key];
         if (!m) continue;
-        const kind = m.type === "enum" ? `one of ${m.options.map((o) => `"${o}"`).join(", ")}` : m.range ? `${m.type} ${m.range[0]}-${m.range[1]}` : m.type;
+        const kind = m.type === "enum" ? `one of ${/** @type {string[]} */
+        m.options.map((o) => `"${o}"`).join(", ")}` : m.range ? `${m.type} ${m.range[0]}-${m.range[1]}` : m.type;
         lines.push(`- ${key} (${kind}): ${m.description}`);
       }
     }

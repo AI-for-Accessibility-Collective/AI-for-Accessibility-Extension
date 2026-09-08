@@ -68,11 +68,18 @@
   // node_modules/@ai4a11y/toolkit/core/strength.js
   var STRENGTH_RANK = Object.freeze({ hint: 0, preference: 1, floor: 2 });
   function rankOf(strength) {
-    const r = STRENGTH_RANK[strength];
+    const r = (
+      /** @type {Readonly<Record<string, number | undefined>>} */
+      STRENGTH_RANK[
+        /** @type {string} */
+        strength
+      ]
+    );
     return r === void 0 ? STRENGTH_RANK.preference : r;
   }
 
   // node_modules/@ai4a11y/toolkit/core/ability.js
+  var SUPPORT_AREAS = Object.freeze(["vision", "hearing", "motor", "cognitive", "reading", "sensory"]);
   var VALID_STRENGTH = ["floor", "preference", "hint"];
   var VALID_UNIT = ["ratio", "em", "percent", "boolean", "enum"];
   function normalizeNeed(n) {
@@ -89,7 +96,10 @@
   }
   function toAbilityModel(profile) {
     const fields = profile && profile.fields || {};
-    const needs = Array.isArray(fields.needs) ? fields.needs.map(normalizeNeed).filter(Boolean) : [];
+    const needs = Array.isArray(fields.needs) ? (
+      /** @type {Need[]} */
+      fields.needs.map(normalizeNeed).filter(Boolean)
+    ) : [];
     return {
       schemaVersion: 1,
       supportAreas: profile && profile.supportAreas || [],
@@ -136,7 +146,10 @@
       id: g.id || null,
       appId: String(g.appId || ""),
       appLabel: String(g.appLabel || g.appId || ""),
-      scopes: Array.isArray(g.scopes) ? g.scopes.filter((s) => GRANT_SCOPES.includes(s)) : [],
+      scopes: Array.isArray(g.scopes) ? g.scopes.filter(
+        /** @param {string} s */
+        (s) => GRANT_SCOPES.includes(s)
+      ) : [],
       // Who this grant's holder is to the person (broker.js's audience-ceiling
       // model, folded in — see AUDIENCES below). Defaults to the narrowest tier
       // so a grant minted before this field existed, or one with a missing/
@@ -148,7 +161,10 @@
   var AUDIENCES = ["personal", "friends", "anyone"];
   var AUDIENCE_ORDER = { personal: 0, friends: 1, anyone: 2 };
   function audienceAllowed(audience, sharing) {
-    const ceiling = AUDIENCE_ORDER[sharing] ?? 0;
+    const ceiling = AUDIENCE_ORDER[
+      /** @type {string} */
+      sharing
+    ] ?? 0;
     const need = AUDIENCE_ORDER[audience] ?? Infinity;
     return need <= ceiling;
   }
@@ -209,6 +225,138 @@
     return !!(blob && blob.kind === BLOB_KIND && blob.v === BLOB_VERSION && Number.isFinite(blob.exportedAt) && blob.exportedAt > 0 && blob.profile && typeof blob.profile === "object" && Array.isArray(blob.profile.supportAreas));
   }
 
+  // node_modules/@ai4a11y/toolkit/core/taxonomy.js
+  var taxonomy = {
+    version: 2,
+    categories: [
+      { id: "news", label: "News" },
+      { id: "social", label: "Social" },
+      { id: "video", label: "Video" },
+      { id: "shopping", label: "Shopping" },
+      { id: "education", label: "Education" },
+      { id: "productivity", label: "Productivity" },
+      { id: "reference", label: "Reference" },
+      { id: "finance", label: "Banking & Finance", noMemoryDefault: true },
+      { id: "health", label: "Health", noMemoryDefault: true },
+      { id: "government", label: "Government", noMemoryDefault: true },
+      { id: "other", label: "Other" }
+    ],
+    // Content contexts — orthogonal to site category (a news article can
+    // contain a video). Reserved in v2 for the scope chain (`context:video`
+    // etc.); listed here so the vocabulary has one home.
+    contexts: [
+      { id: "video", label: "Video content" },
+      { id: "form", label: "Forms" },
+      { id: "document", label: "Long documents" }
+    ],
+    // Deterministic hostname → category map. Checked before any LLM
+    // classification; exact domain or any subdomain matches.
+    hostMap: {
+      "youtube.com": "video",
+      "vimeo.com": "video",
+      "twitch.tv": "video",
+      "dailymotion.com": "video",
+      "netflix.com": "video",
+      "hulu.com": "video",
+      "disneyplus.com": "video",
+      "reddit.com": "social",
+      "twitter.com": "social",
+      "x.com": "social",
+      "facebook.com": "social",
+      "instagram.com": "social",
+      "linkedin.com": "social",
+      "tiktok.com": "social",
+      "mastodon.social": "social",
+      "threads.net": "social",
+      "amazon.com": "shopping",
+      "ebay.com": "shopping",
+      "etsy.com": "shopping",
+      "walmart.com": "shopping",
+      "target.com": "shopping",
+      "shopify.com": "shopping",
+      "nytimes.com": "news",
+      "cnn.com": "news",
+      "bbc.com": "news",
+      "bbc.co.uk": "news",
+      "reuters.com": "news",
+      "washingtonpost.com": "news",
+      "theguardian.com": "news",
+      "medium.com": "news",
+      "substack.com": "news",
+      "apnews.com": "news",
+      "npr.org": "news",
+      "foxnews.com": "news",
+      "nbcnews.com": "news",
+      "abcnews.go.com": "news",
+      "cbsnews.com": "news",
+      "usatoday.com": "news",
+      "wsj.com": "news",
+      "bloomberg.com": "news",
+      "politico.com": "news",
+      "axios.com": "news",
+      "thehill.com": "news",
+      "aljazeera.com": "news",
+      "economist.com": "news",
+      "forbes.com": "news",
+      "time.com": "news",
+      "newsweek.com": "news",
+      "theatlantic.com": "news",
+      "vox.com": "news",
+      "cnbc.com": "news",
+      "latimes.com": "news",
+      "ft.com": "news",
+      "businessinsider.com": "news",
+      "huffpost.com": "news",
+      "wikipedia.org": "reference",
+      "stackoverflow.com": "reference",
+      "docs.google.com": "productivity",
+      "notion.so": "productivity",
+      "github.com": "productivity",
+      "gitlab.com": "productivity",
+      "coursera.org": "education",
+      "edx.org": "education",
+      "khanacademy.org": "education",
+      "udemy.com": "education",
+      "canvas.instructure.com": "education",
+      "paypal.com": "finance",
+      "chase.com": "finance",
+      "bankofamerica.com": "finance",
+      "wellsfargo.com": "finance",
+      "fidelity.com": "finance",
+      "schwab.com": "finance",
+      "venmo.com": "finance",
+      "capitalone.com": "finance",
+      "citi.com": "finance",
+      "webmd.com": "health",
+      "mayoclinic.org": "health",
+      "nih.gov": "health",
+      "healthcare.gov": "health",
+      "mychart.com": "health",
+      "cvs.com": "health",
+      "walgreens.com": "health"
+    },
+    categoryIds() {
+      return this.categories.map((c) => c.id);
+    },
+    // Categories where the Librarian must not record observations unless the
+    // user explicitly opted in.
+    noMemoryCategories() {
+      return this.categories.filter((c) => c.noMemoryDefault).map((c) => c.id);
+    },
+    // Deterministic classification: hostMap first (exact domain or subdomain),
+    // then TLD heuristics. Returns null when only an LLM could tell — callers
+    // fall back to Gemini and should cache the answer (site index).
+    categoryForHost(hostname) {
+      const domain = (hostname || "").toLowerCase().replace(/^www\./, "");
+      if (!domain) return null;
+      for (const [pattern, type] of Object.entries(this.hostMap)) {
+        if (domain === pattern || domain.endsWith("." + pattern)) return type;
+      }
+      if (/\.gov(\.[a-z]{2})?$/.test(domain) || /\.mil$/.test(domain)) return "government";
+      return null;
+    }
+  };
+
   // node_modules/@ai4a11y/toolkit/core/skill.js
   var FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
   function parseFrontmatter(text) {
@@ -248,18 +396,18 @@
     const fm = src.match(FRONTMATTER_RE);
     const front = fm ? parseFrontmatter(fm[1]) : {};
     const body = fm ? fm[2].trim() : src.trim();
-    const asArray = (v) => Array.isArray(v) ? v : v ? [v] : [];
+    const asList = (v) => (Array.isArray(v) ? v : String(v ?? "").split(",")).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
     return {
       name: front.name || "",
       description: front.description || "",
-      supportAreas: asArray(front.supportAreas),
-      siteRelevance: asArray(front.siteRelevance),
+      supportAreas: asList(front.supportAreas),
+      siteRelevance: asList(front.siteRelevance),
       recipe: extractRecipe(body),
       body
     };
   }
   function serializeSkill(skill) {
-    const list = (a) => `[${(a || []).join(", ")}]`;
+    const list = (a) => `[${vocabList(a).join(", ")}]`;
     const front = [
       "---",
       `name: ${skill.name}`,
@@ -283,10 +431,22 @@ ${JSON.stringify(skill.recipe || { adapters: [] }, null, 2)}
 ${body.trim()}
 `;
   }
-  function validateSkill(skill, { tools } = {}) {
+  function vocabList(v) {
+    if (Array.isArray(v)) return v;
+    return v == null || v === "" ? [] : [v];
+  }
+  function validateSkill(skill, { tools, taxonomy: taxonomy2 } = {}) {
     const errors = [];
     if (!skill.name) errors.push("missing name");
     if (!skill.description) errors.push("missing description");
+    for (const a of vocabList(skill.supportAreas)) {
+      if (!SUPPORT_AREAS.includes(a)) errors.push(`supportArea "${a}" not one of ${SUPPORT_AREAS.join(", ")}`);
+    }
+    const tax = taxonomy2 || taxonomy;
+    const categories = typeof tax.categoryIds === "function" ? tax.categoryIds() : (Array.isArray(tax.categories) ? tax.categories : []).map((c) => c?.id);
+    for (const c of vocabList(skill.siteRelevance)) {
+      if (c !== "all" && !categories.includes(c)) errors.push(`siteRelevance "${c}" not one of ${categories.join(", ")}, all`);
+    }
     const steps = skill.recipe?.adapters || [];
     const actions = skill.recipe?.actions || [];
     if (steps.length === 0 && actions.length === 0) errors.push("recipe has no adapters or actions");
@@ -332,9 +492,9 @@ ${body.trim()}
   }
   function matchSkill(skill, { supportAreas = [], category = null } = {}) {
     let score = 0;
-    const areas = new Set(supportAreas);
-    for (const a of skill.supportAreas || []) if (areas.has(a)) score += 2;
-    const rel = skill.siteRelevance || [];
+    const areas = new Set(vocabList(supportAreas));
+    for (const a of vocabList(skill.supportAreas)) if (areas.has(a)) score += 2;
+    const rel = vocabList(skill.siteRelevance);
     if (category && rel.includes(category)) score += 3;
     if (rel.includes("all")) score += 1;
     return score;
@@ -388,8 +548,8 @@ ${body.trim()}
     if (!needToks.length) return 0;
     const fields = [
       { toks: needTokens(skill.name), weight: 3 },
-      { toks: needTokens((skill.supportAreas || []).join(" ")), weight: 2 },
-      { toks: needTokens((skill.siteRelevance || []).join(" ")), weight: 2 },
+      { toks: needTokens(vocabList(skill.supportAreas).join(" ")), weight: 2 },
+      { toks: needTokens(vocabList(skill.siteRelevance).join(" ")), weight: 2 },
       { toks: needTokens(skill.description), weight: 2 }
     ];
     let score = 0;
@@ -404,10 +564,13 @@ ${body.trim()}
   }
 
   // node_modules/@ai4a11y/toolkit/core/skill-builder.js
-  function buildSkillPrompt(need, { profile = {}, tools, taxonomy, previous = null, feedback = "" } = {}) {
-    const adapters = tools.forPrompt().map((t) => `- ${t.id} \u2014 ${t.name}: ${t.description} (helps: ${t.supportAreas.join(", ")})`).join("\n");
+  function buildSkillPrompt(need, { profile = {}, tools, taxonomy: taxonomy2, previous = null, feedback = "" } = {}) {
+    const adapters = tools.forPrompt().map(
+      /** @param {import('./skill.js').ToolPromptEntry} t */
+      (t) => `- ${t.id} \u2014 ${t.name}: ${t.description} (helps: ${t.supportAreas.join(", ")})`
+    ).join("\n");
     const settingsVocab = tools.settingsVocabularyLines().join("\n");
-    const categories = taxonomy ? taxonomy.categoryIds().join(", ") : "news, social, video, shopping, education, productivity, reference, other";
+    const categories = (taxonomy2 || taxonomy).categoryIds().join(", ");
     const profileBlock = profile.supportAreas?.length || profile.freeText ? `
 About this person:
 - Support areas: ${(profile.supportAreas || []).join(", ") || "unspecified"}` + (profile.freeText ? `
@@ -430,6 +593,7 @@ ${adapters}
 Setting keys and their units/ranges (use only these; values must be in range):
 ${settingsVocab}
 
+Support areas for supportAreas: ${SUPPORT_AREAS.join(", ")}.
 Site categories for siteRelevance: ${categories} (or "all").
 
 Output a COMPLETE SKILL.md, nothing else, in exactly this shape:
@@ -437,8 +601,8 @@ Output a COMPLETE SKILL.md, nothing else, in exactly this shape:
 ---
 name: <short-kebab-case-id>
 description: <one sentence: what it does and WHEN to use it \u2014 this is what an agent matches on>
-supportAreas: [<comma-separated from the adapters' "helps" areas>]
-siteRelevance: [<comma-separated categories, or "all">]
+supportAreas: [<comma-separated support areas from the list above, matching the adapters' "helps" areas>]
+siteRelevance: [<comma-separated categories from the list above, or "all">]
 ---
 
 # <Title>
@@ -462,43 +626,44 @@ siteRelevance: [<comma-separated categories, or "all">]
 
 Rules:
 - Only reference adapter ids and setting keys listed above. Keep the recipe minimal \u2014 1 to 4 adapters that directly serve the need.
+- Only use the support areas and site categories listed above; any other value is rejected. If the person's own support areas use other words, pick the closest listed values instead of copying theirs.
 - The "Recipe" JSON is the machine-runnable truth; make the prose match it.
 - Prefer the narrowest siteRelevance the need implies; use "all" only for genuinely global needs.`;
   }
-  function parseBuiltSkill(llmOutput, { tools } = {}) {
+  function parseBuiltSkill(llmOutput, { tools, taxonomy: taxonomy2 } = {}) {
     let text = String(llmOutput || "").trim();
     const outer = text.match(/^```(?:markdown|md)?\s*\n([\s\S]*)\n```$/);
     if (outer) text = outer[1].trim();
     const skill = parseSkill(text);
-    const { valid, errors } = validateSkill(skill, { tools });
+    const { valid, errors } = validateSkill(skill, { tools, taxonomy: taxonomy2 });
     return { skill, valid, errors };
   }
-  async function buildSkill(need, { llm, tools, taxonomy, profile, previous = null, feedback = "" } = {}) {
+  async function buildSkill(need, { llm, tools, taxonomy: taxonomy2, profile, previous = null, feedback = "" } = {}) {
     if (!llm) return { skill: null, valid: false, errors: ["no LLM available"] };
-    const prompt = buildSkillPrompt(need, { profile, tools, taxonomy, previous, feedback });
+    const prompt = buildSkillPrompt(need, { profile, tools, taxonomy: taxonomy2, previous, feedback });
     let out;
     try {
       out = await llm(prompt);
     } catch (e) {
       return { skill: null, valid: false, errors: [`LLM call failed: ${e.message}`] };
     }
-    return parseBuiltSkill(out, { tools });
+    return parseBuiltSkill(out, { tools, taxonomy: taxonomy2 });
   }
 
   // node_modules/@ai4a11y/toolkit/core/librarian.js
   function createLibrarian({
     datastore,
-    taxonomy,
+    taxonomy: taxonomy2,
     clock,
     scheduler = noopScheduler,
     consent = noopConsent,
     demo = noopDemo
   }) {
     if (!datastore) throw new Error("createLibrarian: datastore is required");
-    if (!taxonomy) throw new Error("createLibrarian: taxonomy is required");
+    if (!taxonomy2) throw new Error("createLibrarian: taxonomy is required");
     if (!clock) throw new Error("createLibrarian: clock port is required");
     const DS = () => datastore;
-    const TAX = () => taxonomy;
+    const TAX = () => taxonomy2;
     let _gemini = null;
     function newId(prefix) {
       return `${prefix}-${clock.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -956,12 +1121,25 @@ Rules:
         }
         return category;
       },
+      // Record the person's own category for an origin. Returns
+      // { ok: false, reason: 'bad-category' } for a value outside the taxonomy,
+      // { ok: false, reason: 'bad-origin' } for an empty origin, and { ok: true }
+      // once stored, so a caller can tell a refusal from a save. A user override
+      // is returned by getSiteCategory as-is (source 'user' skips the
+      // taxonomy-version check), and everything keyed by category downstream
+      // only ever matches taxonomy ids: memory scopes,
+      // auto-replay profiles, and the siteRelevance of a task saved as a skill.
+      // Refusing here, the same way logObservation ignores such a value, means
+      // no store carries a category nothing can match.
       async setSiteCategoryOverride(origin, category) {
         origin = (origin || "").toLowerCase().replace(/^www\./, "");
+        if (!origin) return { ok: false, reason: "bad-origin" };
+        if (!TAX().categoryIds().includes(category)) return { ok: false, reason: "bad-category" };
         await DS().patch("mine.siteIndex", (cur) => {
           cur[origin] = { ...cur[origin] || {}, category, source: "user", classifiedAt: clock.now(), taxonomyVersion: TAX().version };
           return cur;
         });
+        return { ok: true };
       },
       // Deterministic scope-chain merge of machine-actionable settings.
       // Order (later wins): general → context → category → explicit
@@ -1353,8 +1531,19 @@ Rules:
         const scored = (await this.listSkills()).map((s) => ({ skill: s, score: matchSkillToNeed(s, need) })).filter((x) => x.score >= 4).sort((a, b) => b.score - a.score);
         return scored.length ? scored[0].skill : null;
       },
+      /**
+       * @param {import('./skill.js').Skill} skill
+       * @returns {ReturnType<typeof resolveSkill>}
+       */
       // Compile a skill to the deterministic apply-plan (settings + adapter ids)
       // the host's adapter layer consumes. No LLM at apply-time.
+      // FLAG(review): the typed block above is for the declaration emitter and
+      // sits above this line comment so scripts/introspect.mjs, which reads the
+      // // lines directly above a method, still finds this description. The
+      // file is opted out of the check, and @ts-nocheck also silences the error
+      // tsc raises when an inferred type cannot be named from another module,
+      // so without the block types/core/librarian.d.ts wrote a bare
+      // SkillRecipeAction that no consumer could resolve.
       resolveSkill(skill) {
         return resolveSkill(skill);
       },
@@ -1376,10 +1565,12 @@ Rules:
         });
       },
       // Persist a user-validated skill to their Skills db (mine.skillDocs).
-      // Re-validates against the registry so a malformed skill can't be stored.
+      // Re-validates against the registry and the vocabularies so a malformed
+      // skill, or one no retrieval could ever find, can't be stored.
       async saveSkill(skill) {
-        const { valid, errors } = validateSkill(skill, { tools: DS().global.tools() });
+        const { valid, errors } = validateSkill(skill, { tools: DS().global.tools(), taxonomy: TAX() });
         if (!valid) return { saved: false, errors };
+        skill = { ...skill, supportAreas: vocabList(skill.supportAreas), siteRelevance: vocabList(skill.siteRelevance) };
         await DS().patch("mine.skillDocs", (skills) => {
           const idx = skills.findIndex((s) => s.name === skill.name);
           const entry = { ...skill, savedAt: clock.now() };
@@ -1674,7 +1865,7 @@ Return ONLY valid JSON with:
         const profile = await getOrInitProfile();
         if (profile.memoryPaused) return { logged: false, reason: "paused" };
         let origin = obs.origin || originOf(obs.url || "");
-        let category = obs.category || null;
+        let category = TAX().categoryIds().includes(obs.category) ? obs.category : null;
         if (origin) {
           const idx = await DS().get("mine.siteIndex");
           const entry = idx[origin];
@@ -1820,7 +2011,7 @@ Return ONLY valid JSON with:
                 const names = new Set(skills.map((s) => s.name));
                 let name = slug;
                 for (let n = 2; names.has(name); n++) name = `${slug}-${n}`;
-                await this.saveSkill({
+                const res = await this.saveSkill({
                   name,
                   description: `Runs "${prompt}" for you. Use it on ${cats.join(", ")} sites.`,
                   supportAreas: [],
@@ -1830,12 +2021,13 @@ Return ONLY valid JSON with:
 
 Saved from a task the assistant completed for you. Applying this skill runs the same task on the current page.`
                 });
+                if (!res.saved) throw new Error(res.errors.join("; "));
               }
+              demo.trace("skill", "skillsdb", "saved as skill.md");
+              demo.trace("skill", "autoenable", "skill stored");
             } catch (e) {
               console.warn("[Librarian] could not save accepted task as a skill:", e.message);
             }
-            demo.trace("skill", "skillsdb", "saved as skill.md");
-            demo.trace("skill", "autoenable", "skill stored");
             demo.trace("skill", "profiledb_skill", "trigger registered");
             demo.trace("personal", "continual", "continual update");
           } else if (prop.change?.op === "add-memory" && prop.change.record) {

@@ -11,8 +11,8 @@
         return Object.keys(supports);
       },
       /**
-       * @param {Record<string, any>} settings  merged settings (canonical units).
-       * @returns {{applied:Object, unmet:Array, degradedTo:Object, satisfied:boolean}}
+       * @param {Record<string, any>|null|undefined} settings  merged settings (canonical units).
+       * @returns {SurfaceApplyResult}
        *   - applied: what this surface will actually render.
        *   - unmet:   [{key, value, reason: 'unsupported' | 'not-representable'}].
        *   - degradedTo: keys whose value was lowered to a representable fallback.
@@ -52,7 +52,13 @@
   // node_modules/@ai4a11y/toolkit/core/strength.js
   var STRENGTH_RANK = Object.freeze({ hint: 0, preference: 1, floor: 2 });
   function rankOf(strength) {
-    const r = STRENGTH_RANK[strength];
+    const r = (
+      /** @type {Readonly<Record<string, number | undefined>>} */
+      STRENGTH_RANK[
+        /** @type {string} */
+        strength
+      ]
+    );
     return r === void 0 ? STRENGTH_RANK.preference : r;
   }
 
