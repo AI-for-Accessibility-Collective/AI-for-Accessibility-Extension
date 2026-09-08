@@ -374,17 +374,83 @@
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   }
+  function getAccessibleName(el) {
+    return getLabelledByText(el) || (el.getAttribute("aria-label") || "").trim() || getNativeName(el) || getNameFromContent(el) || (el.getAttribute("title") || "").trim() || getDefaultName(el);
+  }
   function hasAccessibleName(el) {
-    var _a, _b;
-    if (el.getAttribute("aria-label")) return true;
-    if (el.getAttribute("title")) return true;
-    if ((_a = el.textContent) == null ? void 0 : _a.trim()) return true;
-    const labelledBy = el.getAttribute("aria-labelledby");
-    if (labelledBy) {
-      const target = document.getElementById(labelledBy);
-      if ((_b = target == null ? void 0 : target.textContent) == null ? void 0 : _b.trim()) return true;
+    return !!getAccessibleName(el);
+  }
+  function getLabelledByText(el) {
+    const attr = el.getAttribute("aria-labelledby");
+    if (!attr) return "";
+    return attr.split(/\s+/).map((id) => {
+      const target = document.getElementById(id);
+      return target ? nameOfReferenced(target) : "";
+    }).filter(Boolean).join(" ");
+  }
+  function nameOfReferenced(el) {
+    return (el.getAttribute("aria-label") || "").trim() || getNativeName(el) || getEmbeddedValue(el) || getNameFromContent(el) || (el.getAttribute("title") || "").trim() || getDefaultName(el);
+  }
+  function getNativeName(el) {
+    const tag = el.localName;
+    if (tag === "img" || tag === "area") return (el.getAttribute("alt") || "").trim();
+    if (tag === "input") {
+      const type = (el.getAttribute("type") || "text").toLowerCase();
+      if (type === "image") return (el.getAttribute("alt") || "").trim();
+      if (type === "submit" || type === "reset" || type === "button") return (el.value || "").trim();
     }
-    return false;
+    return "";
+  }
+  function getDefaultName(el) {
+    if (el.localName !== "input") return "";
+    const type = (el.getAttribute("type") || "text").toLowerCase();
+    if (type === "submit") return "Submit";
+    if (type === "reset") return "Reset";
+    return "";
+  }
+  var NO_EMBEDDED_VALUE_TYPES = ["submit", "reset", "button", "image", "hidden", "checkbox", "radio", "password"];
+  function getEmbeddedValue(el) {
+    const tag = el.localName;
+    if (tag === "textarea") return (el.value || "").trim();
+    if (tag === "select") return Array.from(el.selectedOptions || []).map((o) => o.textContent.trim()).join(" ").trim();
+    if (tag === "input") {
+      const type = (el.getAttribute("type") || "text").toLowerCase();
+      if (!NO_EMBEDDED_VALUE_TYPES.includes(type)) return (el.value || "").trim();
+    }
+    return "";
+  }
+  var NO_NAME_FROM_CONTENT = /* @__PURE__ */ new Set(["input", "select", "textarea", "iframe"]);
+  var NOT_RENDERED = /* @__PURE__ */ new Set(["style", "script", "template", "noscript"]);
+  function getNameFromContent(el) {
+    if (NO_NAME_FROM_CONTENT.has(el.localName)) return "";
+    const parts = [];
+    const walk = (node) => {
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3) {
+          parts.push(child.nodeValue);
+          continue;
+        }
+        if (child.nodeType !== 1) continue;
+        if (child.getAttribute("aria-hidden") === "true") continue;
+        if (NOT_RENDERED.has(child.localName)) continue;
+        const label = child.getAttribute("aria-label");
+        if (label && label.trim()) {
+          parts.push(label);
+          continue;
+        }
+        if (child.localName === "img" || child.localName === "area") {
+          parts.push(child.getAttribute("alt") || "");
+          continue;
+        }
+        if (NO_NAME_FROM_CONTENT.has(child.localName)) {
+          parts.push(getEmbeddedValue(child));
+          continue;
+        }
+        walk(child);
+      }
+    };
+    walk(el);
+    return parts.join(" ").replace(/\s+/g, " ").trim();
   }
   function looksLikeNavClass(el) {
     return Array.from(el.classList || []).some((c) => /nav(bar|igation)?([-_]|$)/i.test(c));
@@ -521,43 +587,135 @@
   }
 
   // node_modules/@ai4a11y/tools/auditors/missing-alt.js
+  var CONTENT_IMAGE_MIN_PX = 100;
+  var CANVAS_MIN_PX = 50;
   function findEmptyAltImages() {
     return Array.from(document.querySelectorAll('img[alt=""]')).filter((img) => {
       if (wasProcessed(img)) return false;
       if (!isVisible(img)) return false;
       if (isLikelyDecorative(img)) return false;
       const { width, height } = getImageSize(img);
-      return width > 100 && height > 100;
+      return width > CONTENT_IMAGE_MIN_PX && height > CONTENT_IMAGE_MIN_PX;
     });
   }
   function findCanvasElements() {
     return Array.from(document.querySelectorAll("canvas")).filter((canvas) => {
       if (wasProcessed(canvas)) return false;
       const rect = canvas.getBoundingClientRect();
-      return rect.width > 50 && rect.height > 50;
+      return rect.width > CANVAS_MIN_PX && rect.height > CANVAS_MIN_PX;
     });
   }
 
   // node_modules/@ai4a11y/tools/auditors/missing-labels.js
+  var AMBIGUOUS_LINK_TEXTS = [
+    "click here",
+    "here",
+    "read more",
+    "more",
+    "learn more",
+    "continue",
+    "link",
+    "this",
+    "this link"
+  ];
   function findAmbiguousLinks() {
-    const ambiguousTexts = [
-      "click here",
-      "here",
-      "read more",
-      "more",
-      "learn more",
-      "continue",
-      "link",
-      "this",
-      "this link"
-    ];
     return Array.from(document.querySelectorAll("a[href]")).filter((link) => {
-      var _a;
       if (wasProcessed(link)) return false;
       if (!isVisible(link)) return false;
-      const text = (_a = link.textContent) == null ? void 0 : _a.trim().toLowerCase();
-      return text && ambiguousTexts.includes(text);
+      const text = getAccessibleName(link).toLowerCase();
+      return text && AMBIGUOUS_LINK_TEXTS.includes(text);
     });
+  }
+
+  // node_modules/@ai4a11y/tools/utils/ai-output.js
+  var REFUSAL_PREFIXES = ["I cannot", "I'm unable", "I am unable", "Sorry", "I cannot describe", "Unfortunately"];
+  var UNCERTAINTY_TERMS = ["unsure", "I don't know", "unclear", "I cannot tell", "cannot determine"];
+  var REFUSAL_RE = /^(i (cannot|can't|am unable|don't know)|sorry|unable to|not sure|(n\/a|unknown|no label|not available|unsure)[.!]?\s*$)/i;
+  var MAX_SHORT_TEXT_CHARS = 60;
+  function straightenApostrophes(text) {
+    return text.replace(/[’ʼ]/g, "'");
+  }
+  function startsWithRefusal(text) {
+    if (typeof text !== "string") return false;
+    const t = straightenApostrophes(text.trim());
+    const lower = t.toLowerCase();
+    return REFUSAL_RE.test(t) || REFUSAL_PREFIXES.some((p) => lower.startsWith(p.toLowerCase()));
+  }
+  function containsUncertainty(text) {
+    if (typeof text !== "string") return false;
+    const lower = straightenApostrophes(text).toLowerCase();
+    return UNCERTAINTY_TERMS.some((term) => lower.includes(term.toLowerCase()));
+  }
+  var REFUSAL_VERBS = "translate|simplify|summari[sz]e|rewrite|rephrase|restate|interpret|render|make\\s+out|help|assist|provide|process|read|access|determine|identify|see|view|do|fulfill|complete|comply|generate|produce|answer|respond|perform|proceed|continue|work";
+  var TASK_NOUN = "text|content|passage|page|request|translation|simplification|summary|rewrite|rephrasing";
+  var TASK_OBJECT = String.raw`(?:with\s+|on\s+)?(?:(?:translat|simplify|summari[sz]|rewrit|rephras)ing\s+)?` + String.raw`(?:(?:this|that|these|those)\b|it[,.!]?\s*$|(?:(?:a|an|the|this|that|these|those|your|any)\s+)?(?:${TASK_NOUN})\b)`;
+  var APOLOGY = String.raw`unfortunately|sorry|i(?:['’]m| am) sorry|i apologi[sz]e|as an ai(?: language model| assistant| model)?`;
+  var CANNOT = String.raw`i\s+(?:can(?:['’]t|not)|could(?:n['’]t|\s+not)|won['’]t|will\s+not)`;
+  var UNABLE = String.raw`i(?:['’]m|\s+am)\s+(?:unable|not\s+(?:able|permitted|allowed))\s+to` + String.raw`|i\s+do(?:n['’]t|\s+not)\s+have\s+(?:the\s+)?(?:ability|permission)\s+to`;
+  var FIRST_PERSON_REFUSAL_RE = new RegExp(
+    String.raw`^(?:(?:${APOLOGY})\b[,\s]*(?:but\s+)?)*` + String.raw`(?:i(?:['’]m| am) sorry[,.!]?\s*$` + String.raw`|(?:${CANNOT})(?:\s+(?:${REFUSAL_VERBS}))?[,.!]?\s*$` + String.raw`|(?:${UNABLE})\s+(?:${REFUSAL_VERBS})\b` + String.raw`|i do(?:n['’]t| not) know\s+(?:what|which|the|this|that|enough)\b` + String.raw`|(?:${CANNOT})\s+(?:${REFUSAL_VERBS})\s+${TASK_OBJECT})`,
+    "i"
+  );
+  function opensWithFirstPersonRefusal(text) {
+    if (typeof text !== "string") return false;
+    return FIRST_PERSON_REFUSAL_RE.test(text.trim());
+  }
+  var PASSIVE_REFUSAL_RE = new RegExp(
+    String.raw`^(?:(?:${APOLOGY})\b[,\s]*(?:but\s+)?)*` + String.raw`(?:this|that|the|your)\s+(?:${TASK_NOUN})\s+` + String.raw`(?:can(?:['’]t|not)|could(?:n['’]t|\s+not)|won['’]t|will\s+not)\s+be\s+` + String.raw`(?:translated|simplified|summari[sz]ed|rewritten|rephrased|restated|interpreted|rendered|processed)\b`,
+    "i"
+  );
+  function opensWithPassiveRefusal(text) {
+    if (typeof text !== "string") return false;
+    return PASSIVE_REFUSAL_RE.test(text.trim());
+  }
+  var WRAP_PAIRS = [['"', '"'], ["'", "'"], ["\u201C", "\u201D"], ["\u2018", "\u2019"], ["**", "**"], ["`", "`"]];
+  var LABEL_PREFIX_RE = /^[A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*)?:\s+(?=\S)/;
+  function unwrapOnce(value) {
+    for (const [open, close] of WRAP_PAIRS) {
+      if (value.length < open.length + close.length) continue;
+      if (!value.startsWith(open) || !value.endsWith(close)) continue;
+      const inner = value.slice(open.length, value.length - close.length);
+      const nested = inner.startsWith(open) && inner.endsWith(close);
+      if (inner.includes(open) && !nested) continue;
+      return inner.trim();
+    }
+    return value;
+  }
+  function cleanShortText(text) {
+    if (typeof text !== "string") return text;
+    let t = unwrapOnce(text.trim());
+    const unlabeled = t.replace(LABEL_PREFIX_RE, "");
+    if (unlabeled !== t) {
+      t = unwrapOnce(unlabeled);
+    }
+    return t;
+  }
+  var SHORT_NON_ANSWER_RE = /^(?:i(?:'m| am) not sure|i do not know|(?:i have )?no idea)\b/i;
+  function rejectShortText(text, maxChars = MAX_SHORT_TEXT_CHARS) {
+    if (typeof text !== "string") return "not a string";
+    const t = cleanShortText(text);
+    if (!t) return "empty";
+    if (t.length > maxChars) return `longer than ${maxChars} characters`;
+    if (/[\r\n]/.test(t)) return "contains a line break";
+    if (startsWithRefusal(t)) return "reads as a refusal";
+    if (opensWithFirstPersonRefusal(t) || opensWithPassiveRefusal(t)) return "reads as a refusal";
+    if (SHORT_NON_ANSWER_RE.test(straightenApostrophes(t))) return "reads as a refusal";
+    if (containsUncertainty(t)) return "reads as uncertain";
+    return null;
+  }
+  var RATIO_MIN_INPUT_CHARS = 16;
+  function rejectRewrite(output, input, { minRatio = 0, maxRatio = Infinity, minChars = 0 } = {}) {
+    if (typeof output !== "string") return "not a string";
+    const out = output.trim();
+    if (!out) return "empty";
+    if (opensWithFirstPersonRefusal(out) || opensWithPassiveRefusal(out)) return "reads as a refusal";
+    if (out.length < minChars) return `shorter than ${minChars} characters`;
+    const inLen = typeof input === "string" ? input.trim().length : 0;
+    if (inLen >= RATIO_MIN_INPUT_CHARS) {
+      if (out.length < inLen * minRatio) return `shorter than ${minRatio} of the input`;
+      if (out.length > inLen * maxRatio) return `longer than ${maxRatio} times the input`;
+    }
+    return null;
   }
 
   // node_modules/@ai4a11y/tools/adapters/generate-alt.js
@@ -565,8 +723,6 @@
   });
   var incrementStat = globalThis.ai4a11yIncrementStat || (() => {
   });
-  var REFUSAL_PREFIXES = ["I cannot", "I'm unable", "I am unable", "Sorry", "I cannot describe", "Unfortunately"];
-  var UNCERTAINTY_TERMS = ["unsure", "I don't know", "unclear", "I cannot tell", "cannot determine"];
   var GENERIC_JUNK = /* @__PURE__ */ new Set(["image", "picture", "photo", "photograph", "graphic", "icon", "logo", "img"]);
   function isConfidentDescription(text) {
     if (typeof text !== "string") return false;
@@ -874,7 +1030,6 @@
   function isJunkName(name) {
     return !name || JUNK_NAME_RE.test(name.trim());
   }
-  var REFUSAL_RE = /^(i (cannot|can't|am unable|don't know)|sorry|unable to|n\/a|unknown|no label|not (sure|available)|unsure)/i;
   function isValidLabel(label) {
     if (!label || typeof label !== "string") return false;
     const trimmed = label.trim();
@@ -1196,26 +1351,41 @@ ${chunk}
   };
 
   // node_modules/@ai4a11y/tools/adapters/simplify-text.js
+  var MIN_SIMPLIFIED_RATIO = 0.3;
+  var MAX_SIMPLIFIED_RATIO = 2;
+  var MAX_SUMMARY_RATIO = 1;
+  var MIN_SUMMARY_CHARS = 20;
   var logFix4 = globalThis.ai4a11yLogFix || (() => {
   });
   var incrementStat4 = globalThis.ai4a11yIncrementStat || (() => {
   });
-  async function simplifyText2(element) {
+  var NOT_PROSE_SEL = 'style, script, noscript, template, [hidden], [aria-hidden="true"]';
+  function proseText(element) {
     var _a;
+    if (!element || typeof element.cloneNode !== "function") return "";
+    const clone = element.cloneNode(true);
+    clone.querySelectorAll(NOT_PROSE_SEL).forEach((n) => n.remove());
+    return ((_a = clone.textContent) == null ? void 0 : _a.trim()) || "";
+  }
+  async function simplifyText2(element) {
     if (element.dataset.ai4a11ySimplified) return null;
     element.dataset.ai4a11ySimplified = "pending";
     if (element.tagName === "TABLE" || element.querySelector("table")) {
       element.dataset.ai4a11ySimplified = "skipped";
       return null;
     }
-    const originalText = (_a = element.textContent) == null ? void 0 : _a.trim();
+    const originalText = proseText(element);
     if (!originalText || originalText.length < 100 || originalText.length > 1e4) {
       element.dataset.ai4a11ySimplified = "skipped";
       return null;
     }
     try {
       const simplified = await simplifyText(originalText);
-      if (simplified) {
+      const rejected = simplified == null ? null : rejectRewrite(simplified, originalText, { minRatio: MIN_SIMPLIFIED_RATIO, maxRatio: MAX_SIMPLIFIED_RATIO });
+      if (rejected) {
+        console.warn(`[AI4A11y] simplifyText: rejected model output (${rejected})`);
+      }
+      if (simplified && !rejected) {
         element.dataset.ai4a11yOriginal = originalText;
         element.classList.add("ai4a11y-simplified");
         const originalWrapper = document.createElement("span");
@@ -1265,21 +1435,25 @@ ${chunk}
     }
   }
   async function summarizeContent(element) {
-    var _a;
     if (element.dataset.ai4a11ySummarize) return null;
     element.dataset.ai4a11ySummarize = "pending";
     if (element.tagName === "TABLE") {
       element.dataset.ai4a11ySummarize = "skipped";
       return null;
     }
-    const text = (_a = element.textContent) == null ? void 0 : _a.trim();
+    const text = proseText(element);
     if (!text || text.length < 500) {
       element.dataset.ai4a11ySummarize = "skipped";
       return null;
     }
     try {
-      const summary = await summarizeText(text.substring(0, 3e3));
-      if (summary) {
+      const excerpt = text.substring(0, 3e3);
+      const summary = await summarizeText(excerpt);
+      const rejected = summary == null ? null : startsWithRefusal(summary) ? "reads as a refusal" : rejectRewrite(summary, excerpt, { maxRatio: MAX_SUMMARY_RATIO, minChars: MIN_SUMMARY_CHARS });
+      if (rejected) {
+        console.warn(`[AI4A11y] summarizeContent: rejected model output (${rejected})`);
+      }
+      if (summary && !rejected) {
         const summaryBox = document.createElement("div");
         summaryBox.className = "ai4a11y-summary-box";
         summaryBox.setAttribute("role", "region");
@@ -1631,21 +1805,22 @@ ${chunk}
       console.log("[AI4A11y] Made nested link non-interactive");
     }
   }
+  var TARGET_SIZE_PX = 44;
   function fixTargetSize(element) {
     const rect = element.getBoundingClientRect();
-    if (rect.width >= 44 && rect.height >= 44) return;
-    const needWidth = Math.max(0, (44 - rect.width) / 2);
-    const needHeight = Math.max(0, (44 - rect.height) / 2);
+    if (rect.width >= TARGET_SIZE_PX && rect.height >= TARGET_SIZE_PX) return;
+    const needWidth = Math.max(0, (TARGET_SIZE_PX - rect.width) / 2);
+    const needHeight = Math.max(0, (TARGET_SIZE_PX - rect.height) / 2);
     const display = getComputedStyle(element).display;
     element.style.boxSizing = "border-box";
     element.style.padding = `${needHeight}px ${needWidth}px`;
-    element.style.minWidth = "44px";
-    element.style.minHeight = "44px";
+    element.style.minWidth = `${TARGET_SIZE_PX}px`;
+    element.style.minHeight = `${TARGET_SIZE_PX}px`;
     if (display === "inline") {
       element.style.display = "inline-block";
     }
     incrementStat6("wcag");
-    logFix6("target-size", element, `${Math.round(rect.width)}x${Math.round(rect.height)}`, "44x44");
+    logFix6("target-size", element, `${Math.round(rect.width)}x${Math.round(rect.height)}`, `${TARGET_SIZE_PX}x${TARGET_SIZE_PX}`);
     console.log("[AI4A11y] Increased touch target size");
   }
   function fixViewportMeta(element) {
@@ -1677,7 +1852,40 @@ ${chunk}
   function randomSuffix() {
     return Math.random().toString(36).substring(2, 7);
   }
-  var axeHandlers5 = {
+  var fixTiers = {
+    "html-has-lang": "safe",
+    "html-lang-valid": "safe",
+    "valid-lang": "safe",
+    "duplicate-id": "safe",
+    "duplicate-id-aria": "safe",
+    "duplicate-id-active": "safe",
+    "heading-order": "risky",
+    "tabindex": "safe",
+    "aria-valid-attr": "risky",
+    "aria-roles": "risky",
+    "aria-allowed-role": "risky",
+    "aria-deprecated-role": "safe",
+    "aria-required-attr": "safe",
+    "nested-interactive": "risky",
+    "target-size": "risky",
+    "meta-viewport": "safe",
+    "meta-viewport-large": "safe",
+    "meta-refresh": "safe",
+    "blink": "safe",
+    "marquee": "safe"
+  };
+  function isRiskyFix(ruleId) {
+    return fixTiers[ruleId] === "risky";
+  }
+  function gate(ruleId, fix) {
+    if (!isRiskyFix(ruleId)) return fix;
+    return function gatedFix(element, settings2) {
+      if ((settings2 == null ? void 0 : settings2.wcagRiskyFixes) === true) return fix(element);
+      console.info(`[AI4A11y] Skipped risky fix ${ruleId} (wcagRiskyFixes is off)`);
+      return false;
+    };
+  }
+  var rawHandlers = {
     "html-has-lang": fixMissingLang,
     "html-lang-valid": fixInvalidLang,
     "valid-lang": fixInvalidLang,
@@ -1699,6 +1907,9 @@ ${chunk}
     "blink": replaceObsoleteElement,
     "marquee": replaceObsoleteElement
   };
+  var axeHandlers5 = Object.fromEntries(
+    Object.entries(rawHandlers).map(([ruleId, fix]) => [ruleId, gate(ruleId, fix)])
+  );
 
   // node_modules/@ai4a11y/tools/adapters/fix-links.js
   var logFix7 = globalThis.ai4a11yLogFix || (() => {
@@ -1707,14 +1918,18 @@ ${chunk}
   });
   var MAX_LINKS_PER_PAGE = 10;
   async function improveAmbiguousLink(link) {
-    var _a, _b, _c;
+    var _a, _b;
     if (link.dataset.ai4a11yProcessed) return null;
     markProcessed(link, "pending");
-    const text = ((_a = link.textContent) == null ? void 0 : _a.trim()) || "";
-    const context = ((_c = (_b = link.closest("p, li, td, article, section")) == null ? void 0 : _b.textContent) == null ? void 0 : _c.trim().substring(0, 200)) || "";
+    const text = getAccessibleName(link);
+    const context = ((_b = (_a = link.closest("p, li, td, article, section")) == null ? void 0 : _a.textContent) == null ? void 0 : _b.trim().substring(0, 200)) || "";
     try {
-      const improved = await improveLinkText(text, link.href, context);
-      if (improved && improved.toLowerCase() !== text.toLowerCase()) {
+      const answer = await improveLinkText(text, link.href, context);
+      const rejected = answer == null ? null : rejectShortText(answer);
+      const improved = rejected || answer == null ? null : cleanShortText(answer);
+      if (rejected) {
+        console.warn(`[AI4A11y] improveAmbiguousLink: rejected model output (${rejected})`);
+      } else if (improved && improved.toLowerCase() !== text.toLowerCase()) {
         link.setAttribute("aria-label", improved);
         link.classList.add("ai4a11y-adapted");
         markProcessed(link, "done");
@@ -1794,7 +2009,12 @@ ${chunk}
           var _a, _b;
           return (_b = (_a = r.querySelectorAll("td")[col]) == null ? void 0 : _a.textContent) == null ? void 0 : _b.trim();
         }).filter(Boolean);
-        const header = col < MAX_AI_COLUMNS && samples.length >= 2 ? await inferColumnHeader(samples) : null;
+        const answer = col < MAX_AI_COLUMNS && samples.length >= 2 ? await inferColumnHeader(samples) : null;
+        const rejected = answer == null ? null : rejectShortText(answer);
+        if (rejected) {
+          console.warn(`[AI4A11y] fixTableHeaders: rejected model output for column ${col + 1} (${rejected})`);
+        }
+        const header = rejected || answer == null ? null : cleanShortText(answer);
         headers.push(header || `Column ${col + 1}`);
       }
       const thead = document.createElement("thead");
@@ -3469,6 +3689,17 @@ ${chunk}
           box-shadow: 0 0 0 6px rgba(0, 102, 255, 0.25) !important;
         }
       ` : ""}
+      /* OUT OF FLOW \u2014 see skip-links.js. These wrappers are injected as
+         children of <body> (one of them as the FIRST child), and an in-flow
+         child shifts every positional layout on body by one: grid rows/areas,
+         :first-child, :nth-child(), flex layouts assuming a child count. Their
+         contents are already fixed/absolute; only the wrappers were in flow. */
+      #ai4a11y-skip-links, .ai4a11y-badge-layer {
+        position: fixed;
+        top: 0; left: 0;
+        width: 0; height: 0;
+        z-index: 999999;
+      }
       .ai4a11y-skip-link {
         position: fixed;
         top: -100px;
@@ -3561,6 +3792,7 @@ ${chunk}
       const focusables = getFocusable(document.body);
       const container = document.createElement("div");
       container.setAttribute("aria-hidden", "true");
+      container.className = "ai4a11y-badge-layer";
       this.badgeContainer = container;
       focusables.forEach((el, idx) => {
         const rect = el.getBoundingClientRect();
@@ -4717,6 +4949,8 @@ ${scope(":focus")} {
   var SKIP_ANCESTOR = 'script, style, code, pre, textarea, [contenteditable="true"]';
   var MAX_BLOCKS = 80;
   var BATCH = 4;
+  var MIN_TRANSLATED_RATIO = 0.1;
+  var MAX_TRANSLATED_RATIO = 8;
   var TranslatePage = {
     enabled: false,
     translated: null,
@@ -4750,10 +4984,16 @@ ${scope(":focus")} {
           let out;
           try {
             out = await translateText(original, this.targetLang);
-          } catch {
+          } catch (e) {
+            console.warn("[AI4A11y] Translate: left a block untouched, provider error:", e);
             return;
           }
-          if (!out || !this.enabled || !el.isConnected) return;
+          if (out == null || !this.enabled || !el.isConnected) return;
+          const rejected = rejectRewrite(out, original, { minRatio: MIN_TRANSLATED_RATIO, maxRatio: MAX_TRANSLATED_RATIO });
+          if (rejected) {
+            console.warn(`[AI4A11y] Translate: left a block untouched, rejected model output (${rejected})`);
+            return;
+          }
           const originalNodes = [...el.childNodes];
           el.textContent = out;
           this.translated.add({ el, originalNodes });
@@ -5048,7 +5288,8 @@ ${scope(":focus")} {
         let def2;
         try {
           def2 = await defineWord(word, this.sentenceContext(span));
-        } catch {
+        } catch (e) {
+          console.warn("[AI4A11y] Define Words: no definition shown, provider error:", e);
           def2 = null;
         }
         if (!this.enabled || !this.definitions) return;
@@ -5461,7 +5702,7 @@ html.${this.htmlClass} { filter: brightness(${bright}) saturate(${sat}) !importa
       region.id = REGION_ID;
       region.setAttribute("aria-live", "polite");
       region.setAttribute("aria-atomic", "false");
-      region.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;";
+      region.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;";
       (document.body || document.documentElement).appendChild(region);
       this.region = region;
       if (typeof MutationObserver !== "undefined") {
@@ -5778,6 +6019,8 @@ html.${this.htmlClass} { filter: brightness(${bright}) saturate(${sat}) !importa
 
   // node_modules/@ai4a11y/tools/adapters/describe-on-demand.js
   var DescribeOnDemand = {
+    // Shown when the provider throws. Fixed on purpose; see describe() below.
+    PROVIDER_ERROR_TEXT: "No description is available. The AI provider reported an error; check its settings and try again.",
     styleId: "ai4a11y-describe-styles",
     enabled: false,
     panel: null,
@@ -5839,7 +6082,7 @@ html.${this.htmlClass} { filter: brightness(${bright}) saturate(${sat}) !importa
       }
       const token = ++this._reqSeq;
       this.show("Describing\u2026");
-      let desc = null, errMsg = null;
+      let desc = null, failed = false;
       try {
         if (el.tagName === "IMG" && (el.currentSrc || el.src)) {
           const dataUrl = await imageToDataUrl(el);
@@ -5859,11 +6102,12 @@ html.${this.htmlClass} { filter: brightness(${bright}) saturate(${sat}) !importa
           else desc = label || text || `A ${el.tagName.toLowerCase()} with no readable content.`;
         }
       } catch (e) {
+        console.warn("[AI4A11y] Describe: no description shown, provider error:", e);
         desc = null;
-        errMsg = e && e.message ? e.message : null;
+        failed = true;
       }
       if (token !== this._reqSeq) return;
-      this.show(desc || errMsg || "No description is available for that element.");
+      this.show(desc || (failed ? this.PROVIDER_ERROR_TEXT : "No description is available for that element."));
     },
     show(text) {
       if (!this.panel) {
@@ -7017,19 +7261,19 @@ ${scope} table {
       }
       const token = ++this._reqSeq;
       this.showMessage("Reading chart data\u2026");
-      let data = null, errMsg = null;
+      let data = null;
       try {
         const dataUrl = await this.capture(chart);
         data = dataUrl ? await extractChartData(dataUrl, this.contextText(chart)) : null;
       } catch (e) {
+        console.warn("[AI4A11y] Explore a Chart: no table shown, provider error:", e);
         data = null;
-        errMsg = e && e.message ? e.message : null;
       }
       if (token !== this._reqSeq || !this.enabled) return;
       if (data && Array.isArray(data.headers) && Array.isArray(data.rows)) {
         this.showTable(data);
       } else {
-        this.showMessage(errMsg || "Couldn't read this chart's data. Check that your AI key is set in the extension settings.");
+        this.showMessage("Couldn't read this chart's data. Check that your AI key is set in the extension settings.");
       }
     },
     // A data URL of the chart's pixels, whatever it is rendered with.
@@ -7356,6 +7600,20 @@ ${scope} table {
       const nav = document.querySelector(options.navSelector || NAV_SELECTOR);
       if (main || nav) {
         this.styleHandle = injectStyle(this.styleId, `
+        /* OUT OF FLOW. The container is the first child of <body> so the links
+           are the first Tab stop \u2014 but first in tab order must not mean first in
+           the box layout. In flow it takes a slot, and any positional layout on
+           body shifts by one: grid-template-rows/areas, body > *:first-child,
+           :nth-child(), a flex layout assuming a child count. (A real page laid
+           out with "grid-template-rows: auto 1fr" put its header in the 1fr row
+           and rendered it 878px tall.) Fixed + zero-size occupies no slot and
+           keeps the DOM order, so tab order is unchanged. */
+        #${this.containerId} {
+          position: fixed;
+          top: 0; left: 0;
+          width: 0; height: 0;
+          z-index: 2147483647;
+        }
         #${this.containerId} a {
           position: absolute;
           top: 0; left: 0;
@@ -7442,8 +7700,7 @@ ${scope} table {
   function hasAccessibleName2(el) {
     const label = el.getAttribute("aria-label");
     if (label && label.trim()) return true;
-    const labelledby = el.getAttribute("aria-labelledby");
-    return !!(labelledby && labelledby.trim());
+    return !!getLabelledByText(el);
   }
   function serializeMath(el, depth = 0) {
     if (depth > MAX_DEPTH) return "";

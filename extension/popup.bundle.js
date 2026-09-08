@@ -253,6 +253,7 @@
   var settings = { ...defaults };
   function mergeProfileTools(profileIds) {
     const numericKeys = ["fontScale", "lineHeight", "letterSpacing"];
+    const noneKeys = ["colorFilter", "colorBlindMode", "contrastMode"];
     const merged = {};
     for (const profileId of profileIds) {
       const profile = profiles[profileId];
@@ -260,7 +261,7 @@
       for (const [key, value] of Object.entries(profile.tools)) {
         if (numericKeys.includes(key) && typeof value === "number") {
           merged[key] = Math.max(merged[key] || 0, value);
-        } else if ((key === "colorFilter" || key === "contrastMode") && value !== "none") {
+        } else if (noneKeys.includes(key) && value !== "none") {
           merged[key] = value;
         } else {
           merged[key] = merged[key] || value;

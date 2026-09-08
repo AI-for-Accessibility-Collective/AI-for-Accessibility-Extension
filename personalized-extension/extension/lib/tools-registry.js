@@ -863,7 +863,7 @@ globalThis.AA_TOOLS = {
   {
     "id": "wcag-fixes",
     "name": "WCAG Auto-Fix",
-    "description": "Automatic fixes for common WCAG violations: lang attributes, duplicate IDs, heading order, tabindex, ARIA validation, touch targets, and more.",
+    "description": "Automatic fixes for common WCAG violations: lang attributes, duplicate IDs, tabindex, deprecated ARIA roles, zoom lock, obsolete elements. The fixes that change page structure (heading re-tag, ARIA strip, nested control unwrap, touch target size) also need wcagRiskyFixes.",
     "supportAreas": [
       "vision",
       "motor",
@@ -1140,7 +1140,7 @@ globalThis.AA_TOOLS = {
   },
   "wcagRiskyFixes": {
     "type": "boolean",
-    "description": "Enable risky WCAG fixes (heading re-tag, ARIA strip, target size) — default off"
+    "description": "Also run the risky WCAG fixes that change page structure (heading re-tag, ARIA strip, nested control unwrap, target size). Off by default"
   },
   "autoDescribe": {
     "type": "boolean",
