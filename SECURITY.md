@@ -6,11 +6,16 @@ repository.
 
 ## Read this before installing adapters
 
+**Adapters you install can see and change everything on
+the pages they run on, including anything you type there. We check their
+code, but a checked adapter is not a contained one. Only install adapters
+from people you trust.**
+
 Custom adapters are **linted but not sandboxed**. They are registered as
-Chrome user scripts and run with full access to every page they touch. Only
-install adapters you trust, from people you trust. Adapters are written to be
-reversible, which means their page changes can be undone; it does not limit
-what a malicious adapter could read or do while it runs.
+Chrome user scripts and run with full access to every page they touch.
+Adapters are written to be reversible, which means their page changes can
+be undone; it does not limit what a malicious adapter could read or do
+while it runs.
 
 ## Supported Versions
 
@@ -18,19 +23,22 @@ what a malicious adapter could read or do while it runs.
 | ------- | ------------------ |
 | Latest  | :white_check_mark: |
 
+There are no tagged releases yet; until the first one, only the current
+state of the default branch is supported.
+
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in these extensions, please report it responsibly:
+1. **Do not** open a public issue.
+2. Use GitHub's **Report a vulnerability** button on this repository's
+   Security tab (private vulnerability reporting).
+   If that is unavailable to you, email the maintainer contact listed in
+   [MAINTAINERS.md](MAINTAINERS.md).
+3. Include: a description of the vulnerability, steps to reproduce, the
+   potential impact, and a suggested fix if you have one.
 
-1. **Do not** open a public issue
-2. Email the maintainers directly at [dcelin@stanford.edu](mailto:dcelin@stanford.edu)
-3. Include:
-   - Description of the vulnerability
-   - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if any)
-
-We will respond within 48 hours and work with you to understand and address the issue.
+We aim to acknowledge reports within a week. This is a research project;
+response capacity varies with the project phase, and we will be honest
+with you about timelines once we have your report.
 
 ## Security Considerations
 
@@ -49,6 +57,10 @@ We will respond within 48 hours and work with you to understand and address the 
 - We do not use `eval()` or `document.write()`
 
 ### Data Handling
+
+A plain-language version of this section lives at
+[docs/DATA-AND-PRIVACY.md](docs/DATA-AND-PRIVACY.md); this inventory is
+the precise statement and wins if they ever disagree.
 
 Where each kind of data lives:
 
@@ -77,4 +89,4 @@ Where each kind of data lives:
 
 ## Acknowledgments
 
-We thank our security researchers and community members who help keep this project secure.
+We thank our researchers and community members who help keep this project secure.

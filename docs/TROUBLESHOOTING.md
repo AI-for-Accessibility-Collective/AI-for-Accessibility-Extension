@@ -2,10 +2,9 @@
 
 Common issues and solutions for the two extensions in this repository.
 
-Both extensions load unpacked from what is committed here, so most fixes below
-are a reload rather than a rebuild. Rebuilding happens in the toolkit
-repository, where the code the bundles are built from is canonical. See
-"Rebuilding" at the end.
+Both extensions load unpacked from what is committed here, so most fixes
+below are a reload rather than a rebuild. If a fix below says "rebuild",
+that is a developer step — see "Rebuilding" at the end.
 
 ## Chrome Extension
 
@@ -33,7 +32,9 @@ repository, where the code the bundles are built from is canonical. See
 3. Test the key at [Google AI Studio](https://aistudio.google.com/apikey)
 4. Check browser console for API errors (F12 → Console)
 
-**Rate limits:** Free tier allows 15 requests/minute, 1500/day. For heavier use, enable billing in [Google Cloud Console](https://console.cloud.google.com/).
+**Rate limits:** the free tier has per-minute and per-day limits; when you
+hit them, AI features pause and everything else keeps working. Current
+limits and costs: see [COSTS.md](COSTS.md).
 
 ### Visual settings not applying
 
@@ -54,15 +55,14 @@ repository, where the code the bundles are built from is canonical. See
 2. Check the page is not one Chrome blocks content scripts on
    (`chrome://` pages, the Chrome Web Store)
 3. `extension/content.bundle.js` is a committed build output. If the bundle
-   itself is at fault, the source it is built from is in the toolkit
-   repository; see "Rebuilding"
+   itself is at fault, see "Rebuilding" below
 
 ## CLI
 
-The `ai4a11y` command line tool is not part of this repository. It is
-canonical in the [toolkit
-repository](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit),
-along with the auditors and adapters it drives.
+The `ai4a11y` command line tool is not part of this repository. It lives in
+the [toolkit
+repository](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit)
+at `cli/`, along with the auditors and adapters it drives.
 
 ## Voice/Text Control Web Apps
 
@@ -127,37 +127,57 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8080
 2. Reload the extension at `chrome://extensions`, then start onboarding again
 3. Check for Gemini API key in the onboarding flow
 
-### Custom skills not running
+### Custom adapters not running
 
-**Symptoms:** Saved skills don't apply to pages.
-
-**Solutions:**
-1. Chrome 120+ required for userScripts API
-2. Enable Developer Mode at `chrome://extensions`
-3. Check skill is enabled in extension popup
-4. View skill errors in DevTools console
-
-### Skill builder lint errors
-
-**Symptoms:** "Code didn't look safe to run" during skill creation.
+**Symptoms:** Saved custom adapters don't apply to pages. The most common
+cause is that Chrome's user-scripts permission was never switched on — the
+extension can only run the page fixes it builds for you while it is.
 
 **Solutions:**
-1. Skills cannot use `eval`, `fetch`, `import`, `document.write`
-2. For AI-powered skills, choose "With AI" option (uses `chrome.runtime.sendMessage`)
+1. Switch on user scripts. Where the switch lives depends on your Chrome
+   version:
+   - **Chrome 138 and newer:** at `chrome://extensions`, open the
+     extension's own **Details** page and turn on **Allow User Scripts**.
+   - **Older Chrome (120–137):** turn on **Developer mode** (top right of
+     `chrome://extensions`).
+   Then reload the extension. (Chrome 120+ is required either way.)
+2. Check the adapter is enabled in the extension popup
+3. View errors in the DevTools console — if the extension's service-worker
+   console says custom skills require Developer mode, it is the switch
+   above that is off
+
+(Internal code and storage still call these "skills" from an earlier
+naming; the UI and docs say "custom adapters".)
+
+### Adapter Builder lint errors
+
+**Symptoms:** "Code didn't look safe to run" during adapter creation.
+
+**Solutions:**
+1. Generated adapters cannot use `eval`, `fetch`, `import`, `document.write`
+2. For AI-powered adapters, choose "With AI" option (uses `chrome.runtime.sendMessage`)
 3. Review the generated code in the code viewer
 
 ## Rebuilding
 
-There is no build step in this repository. The bundles both extensions run
-are committed, and the code they are built from (`tools/`, `toolkit/`) is
-canonical in the [toolkit
-repository](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit).
-A change to an auditor, adapter, profile or the toolkit core is made there,
-and the refreshed bundles arrive here as a commit.
+The committed bundles are the runnable state of both extensions, and this
+repository rebuilds them itself — no sibling checkout needed. The toolkit
+code they are built from is consumed as two vendored packages
+(`@ai4a11y/toolkit`, `@ai4a11y/tools` under `vendor/`, pinned to one
+toolkit commit by `vendor/PIN.json`).
 
-Making this repository buildable on its own means consuming the toolkit core
-as a dependency instead of reading a sibling checkout. That work is planned
-and tracked as issue #2.
+```bash
+npm ci && (cd personalized-extension && npm ci)
+npm run build     # rebuilds both extensions from the vendored packages
+```
+
+A change to an auditor, adapter, profile, or the toolkit core is still made
+in the [toolkit
+repository](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit),
+where that code is canonical; it reaches this repository through a
+deliberate pin bump (`node scripts/update-vendor.mjs --commit <sha>`)
+followed by a rebuild. CI verifies both that the tarballs match the pinned
+commit and that the committed bundles match a fresh rebuild.
 
 ### Checking a checkout is complete
 
@@ -190,4 +210,3 @@ If your issue isn't listed:
    - Steps to reproduce
    - Console errors (F12 → Console)
    - Extension version
-3. Ping [@chuanenlin](https://github.com/chuanenlin) (David)

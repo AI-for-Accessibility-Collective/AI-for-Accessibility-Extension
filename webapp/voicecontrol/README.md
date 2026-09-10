@@ -1,6 +1,6 @@
-# BrowserMind 🧠🌐
+# BrowserMind
 
-> Voice-controlled browser agent powered by the **Gemini Live API**, **Google ADK**, and **browser-harness**.
+> Voice-controlled browser agent powered by the **Gemini Live API**, **Google ADK**, and **browser-harness**. 🧠🌐
 
 Talk to your browser. BrowserMind listens to your voice, sees the live browser viewport, and autonomously navigates, clicks, types, and scrolls — narrating every action out loud.
 
@@ -8,12 +8,10 @@ Talk to your browser. BrowserMind listens to your voice, sees the live browser v
 
 ## Architecture
 
-```
-User Voice  ──►  FastAPI WebSocket  ──►  ADK LiveRequestQueue  ──►  Gemini Live API
-                                                                          │
-Browser Screenshots ◄── browser-harness daemon ◄── CDP ◄── Chrome :9222  │
-         └──────────────────────────────────────────────────────────────►┘
-```
+Your voice streams through a FastAPI WebSocket into the ADK
+`LiveRequestQueue` and on to the Gemini Live API; browser screenshots flow
+back from Chrome (remote debugging port 9222) through the browser-harness
+daemon into both the UI viewport and the agent's vision context.
 
 | Layer | Stack |
 |---|---|
@@ -69,8 +67,8 @@ Get a key from [Google AI Studio](https://aistudio.google.com/apikey).
 ### Step 1 — Clone the repo
 
 ```bash
-git clone https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit.git
-cd AI-for-Accessibility-Toolkit/webapp/voicecontrol
+git clone https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Extension.git
+cd AI-for-Accessibility-Extension/webapp/voicecontrol
 ```
 
 ### Step 2 — Backend

@@ -6,6 +6,10 @@ labels: bug
 assignees: ''
 ---
 
+> Auditors, adapters, profiles, the toolkit core, and the CLI live in the
+> [toolkit repository](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/issues)
+> — please file there if your bug is in one of those.
+
 ## Description
 A clear description of the bug.
 
@@ -21,7 +25,7 @@ What you expected to happen.
 What actually happened.
 
 ## Environment
-- **Interface**: Chrome Extension / Personalized Extension / CLI / Voice Control
+- **Interface**: Original extension / Personalized extension / Voice or Text Control web app
 - **Browser**: Chrome version
 - **OS**: macOS / Windows / Linux
 - **Extension version**: (from manifest.json)
@@ -30,7 +34,8 @@ What actually happened.
 If applicable, add screenshots.
 
 ## Console Errors
-Open DevTools (F12) → Console tab, paste any errors here.
+Open DevTools (F12) → Console tab, paste any errors here. (If you don't
+know what that means, skip it — describe what you saw instead.)
 
 ## Additional Context
 - Which accessibility features were enabled?
