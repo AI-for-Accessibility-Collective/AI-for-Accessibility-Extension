@@ -1,6 +1,11 @@
 # Personalized Extension
 
-AI-powered accessibility Chrome extension that **personalizes the web to each user**. Instead of mapping disability profiles to fixed tool sets, users describe their needs in plain language; a personal memory agent (the **Librarian**) learns their preferences over time, applies the right **adapters** per site, and — when nothing built-in fits — has an **Engineer** agent build a new adapter on demand.
+AI-powered accessibility Chrome extension that **personalizes web pages to
+each person**. Instead of mapping disability profiles to fixed tool sets,
+users describe their needs in plain language; a personal memory agent (the
+**Librarian**) learns their preferences over time, applies the right
+**adapters** per site, and — when nothing built-in fits — has an
+**Engineer** agent build a new adapter on demand.
 
 > **Terminology.** An **adapter** is the executable code that adapts a page — built-in ones ship in a shared, read-only **Global db**, and users can generate their own in the **Adapter Builder**. A **skill** (`SKILL.md`) is a recipe that *composes* existing adapters for a need, built in the **Skill Builder**. Needing a new combination is common (skill); needing a brand-new capability is rare (adapter). Everything a user accumulates lives in their private **Mine** store. Internal code identifiers still say "skill" from an earlier naming — see the root `CLAUDE.md`.
 
@@ -48,22 +53,31 @@ skills/
 
 To contribute a shared adapter:
 
-The canonical `tools/adapters/` now lives in the [toolkit repository](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit), so a
+The canonical `tools/adapters/` lives in the [toolkit repository](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit), so a
 shared adapter starts there:
 
-1. Write the adapter in `tools/adapters/` in the toolkit repository. The
-   one-line re-export that pairs with it lives here:
+1. Write the adapter in `tools/adapters/` in the toolkit repository, and
+   register it there in `toolkit/registry/tools.js` (`supportAreas`,
+   `settings`, a one-line `description` the recommender reads, and
+   `quickStart: true` if it should appear in fast onboarding; new setting
+   keys go in `settingsMeta`).
+2. Bring it into this repository with a vendor pin bump: once the toolkit
+   change lands, run `node scripts/update-vendor.mjs --commit <sha>` here,
+   add the one-line re-export in `skills/builtin/`:
    ```js
    // skills/builtin/my-adapter.js
-   export * from '../../../tools/adapters/my-adapter.js';
+   export * from '@ai4a11y/tools/adapters/my-adapter.js';
    ```
-   That relative path resolves during a build in the toolkit repository,
-   where both trees are present. The build rewrites the canonical adapter's
-   `utils/ai.js` import to this extension's provider, so the same file runs
-   in both. A few adapters that genuinely diverged still keep their own code
-   here, and those are edited in place.
-2. Register it in `skills/registry.js` with its metadata (`supportAreas`, `settings`, a one-line `description` the recommender reads, and `quickStart: true` if it should appear in fast onboarding). New setting keys go in `settingsMeta` in the same file.
-3. A build in the toolkit repository regenerates `extension/lib/tools-registry.js`, after which it's part of the Global db every user can be recommended and enable. The regenerated file arrives here as a commit.
+   The build's `pext-utils-redirect` plugin resolves the canonical file's
+   utils import to this extension's provider utils, so the re-export is
+   the whole file. (Some adapters that genuinely diverged keep their own
+   code in `skills/builtin/` and are edited in place — an existing file
+   there shows which kind it is.)
+3. Rebuild and commit: `npm ci` in both roots, then `npm run build`
+   regenerates `extension/lib/tools-registry.js` and the bundles. Commit
+   the rebuilt outputs with your change; CI fails on stale bundles. After
+   that it's part of the Global db every user can be recommended and
+   enable.
 
 Because the Global db is **read-only at runtime**, contributions here are reviewed, shipped centrally, and shared across all users — distinct from a user's private custom adapters (which the Engineer writes into their **Mine** `mine.skills` store).
 
@@ -115,7 +129,7 @@ To confirm a checkout is complete before loading it, run `npm run check:loadable
 
 ## Gemini API Key
 
-The extension uses Google's Gemini API for adapter recommendations, site classification, the Librarian's reasoning, and AI-powered adapters (alt text, simplification). Get a key from [Google AI Studio](https://aistudio.google.com/apikey) — the free tier allows 15 requests/minute. Enter it during onboarding or in the popup. The host-map portion of site classification and all built-in non-AI adapters work without a key.
+The extension uses Google's Gemini API for adapter recommendations, site classification, the Librarian's reasoning, and AI-powered adapters (alt text, simplification). Get a key from [Google AI Studio](https://aistudio.google.com/apikey) — the free tier has daily limits (see [docs/COSTS.md](../docs/COSTS.md)). Enter it during onboarding or in the popup. The host-map portion of site classification and all built-in non-AI adapters work without a key.
 
 ## Project Structure
 
@@ -125,12 +139,12 @@ personalized-extension/
 │   ├── manifest.json
 │   ├── background.js            # Service worker: Gemini, user-script registration,
 │   │                           #   site classification, Librarian message routing
-│   ├── lib/                     # BUILT in the toolkit repo + generated; committed here
+│   ├── lib/                     # Built from the vendored toolkit packages; committed
 │   │   ├── datastore.js         # Global (read-only) + Mine (per-user) datastore facade
 │   │   ├── librarian.js         # Personal memory/profile agent — sole writer of Mine
 │   │   ├── taxonomy.js          # Site categories + host-map for classification
 │   │   ├── tools-registry.js    # Generated from skills/registry.js (the Global db at runtime)
-│   │   ├── skills-db.js         # Generated from the toolkit repo's toolkit/skills/builtin/
+│   │   ├── skills-db.js         # Generated from the toolkit's builtin skills
 │   │   └── demo-trace.js        # Demo-only instrumentation
 │   ├── browser-harness/         # Assistant: CDP-driven browser automation agent
 │   ├── skill-builder/           # Engineer: the Skill Builder (composes adapters)
@@ -145,7 +159,7 @@ personalized-extension/
 ├── skills/
 │   ├── registry.js              # Global db catalog + settingsMeta vocabulary
 │   └── builtin/                 # Shared adapter corpus, mostly re-exports of the
-│                                #   toolkit repo's tools/adapters/
+│                                #   vendored @ai4a11y/tools adapters
 ├── utils/                       # Gemini abstraction, color/DOM utilities, recommender
 ├── skill-creator/               # Model-facing SKILL.md guidance for authoring adapters
 ├── test/                        # Librarian regression gate + browser tests
@@ -156,18 +170,14 @@ personalized-extension/
 
 ## Development
 
-What runs here:
+This repository rebuilds itself from the vendored `@ai4a11y/toolkit` and
+`@ai4a11y/tools` packages (see "Builds and tests" in the root README) —
+no sibling toolkit checkout is needed:
 
 ```bash
 node test/librarian-test.js      # Librarian regression gate (also `npm test` at the root)
-```
-
-What needs the toolkit repository, because it reads `toolkit/` or `tools/`
-directly:
-
-```bash
 node test/run-tests.js           # Bundle + registry checks
-node test/verifier-test.mjs      # Validation layer
+node test/verifier-test.mjs      # Validation layer (imports resolve from the vendored packages)
 npm run watch                    # Rebuild on changes
 npm run build                    # One-time build
 ```
@@ -177,7 +187,5 @@ skipped in CI.
 
 Reload the extension in `chrome://extensions` to pick up a new commit.
 `extension/lib/*.js` and every `*.bundle.js` are build outputs. Do not
-hand-edit them: change the source in the toolkit repository, or
-`skills/registry.js` here, and rebuild there.
-
-Making this repository buildable on its own is planned, and tracked as issue #2.
+hand-edit them: change the source in the toolkit repository (or
+`skills/registry.js` here), bump the vendor pin, and rebuild here.

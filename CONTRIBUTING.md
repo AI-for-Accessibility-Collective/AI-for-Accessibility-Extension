@@ -14,8 +14,9 @@ so the first question is which repo your contribution belongs in.
 | **Fix an issue** (new adapter) | Toolkit repo → `tools/adapters/` |
 | **Combine adapters for a need** (new skill) | Toolkit repo → `toolkit/skills/builtin/` |
 | **Add or tune a profile** | Toolkit repo → `tools/profiles/settings.json` |
+| **Work on the skill engine** (the Engineer, `skill-builder.js`) | Toolkit repo → `toolkit/core/` |
 | **Change the extension UI** (popup, background, content script) | Here → `extension/` |
-| **Work on onboarding, memory, the Adapter Builder or Skill Builder, voice mode** | Here → `personalized-extension/` |
+| **Work on the Adapter Builder or Skill Builder UI, onboarding, memory, or voice mode** | Here → `personalized-extension/` |
 | **Work on the web app prototypes** | Here → `webapp/` |
 
 Rule of thumb from the catalog side: **need a new primitive → adapter (code);
@@ -23,10 +24,26 @@ need a new recipe → skill (no code).** A skill only composes adapters that
 already exist. Both are toolkit-repo contributions; this repo picks them up
 through its built bundles.
 
+## Contributions we're looking for
+
+Code is not the only kind. Right now, useful contributions here include:
+
+- **Real-page reports.** Try an extension on pages you actually use and
+  tell us where adaptations helped, failed, or misfired. This is research
+  data, not just bug reporting.
+- **Documentation for people, not programmers** — plainer wording,
+  screenshots with good alt text for the install guide, translations.
+- **Accessibility fixes to this repository itself** — image alt text,
+  heading structure, diagrams that read well in a screen reader.
+- **Extension UI work** — see the table above and open issues.
+
+New adapters, auditors, profiles, and skills are wanted too — in the
+toolkit repository, where its CONTRIBUTING lists what is most useful.
+
 ## Set up
 
 ```bash
-git clone https://github.com/josifiin/AI-for-Accessibility-Extension.git
+git clone <your fork of this repository>
 ```
 
 No build step is needed to run what is here: the bundles are committed.
@@ -82,6 +99,43 @@ more than one kind of page (an article, a form, a data table).
   if your change affects them, rebuild (`npm run build`) and commit the
   outputs, or CI fails on the drift
 
+## What to expect from review
+
+This is a time-boxed research project. During the active phase we review
+as capacity allows; afterwards, review may be slow or paused while
+longer-term maintainership is defined (see the toolkit repository's
+ROADMAP, Governance). An unreviewed PR is a statement about our capacity,
+not about your contribution.
+
+## Forks and spin-offs
+
+This project is a research probe with a deliberately small core. We do not
+expect — or want — every idea to land in this repository. If it is useful
+to you but you need it to go somewhere we aren't going, **fork it. That's
+a success, not a defection.**
+
+What we ask in return is the learnings. If your fork or spin-off teaches
+you something — an adapter that worked, a design that didn't, a need the
+ability model can't express, results from testing with the people you
+built it for — open an issue or a short write-up telling us what you
+found. Code back is welcome; understanding back is the part we can't get
+any other way.
+
+Practical notes for forkers:
+
+- The Apache 2.0 license already permits all of this; this section is an
+  invitation, not a condition.
+- Please rename your fork enough that people don't mistake it for this
+  project, and keep the "research probe, not validated, not a replacement
+  for assistive technology" framing anywhere you inherit our claims.
+- If you want your project listed alongside the others building on the
+  toolkit, add it to the toolkit repository's `docs/projects.md` by pull
+  request.
+
+How outside contributions and forks will be handled longer term
+(custodianship, reconciling forks) is still being defined; this section
+will be updated when it is.
+
 ## Code Style
 
 - ES modules, bundled by esbuild
@@ -99,4 +153,5 @@ more than one kind of page (an article, a form, a data table).
 
 ## Questions?
 
-Open an issue or ping [@chuanenlin](https://github.com/chuanenlin) (David).
+Open an issue on this repository (or the toolkit repository's, per the
+table above). Current contact routes: [MAINTAINERS.md](MAINTAINERS.md).

@@ -1,4 +1,13 @@
-# Voice Mode — Full Toolkit Control via Gemini Live
+# Voice Mode — the personalized extension's hands-free control (Gemini Live)
+
+> **Scope.** This page documents the voice mode shipped in **this
+> repository's personalized extension** (side panel + offscreen document,
+> streaming to the Gemini Live API). It is a different implementation from
+> the toolkit's platform-neutral text/voice **Controller**, which is
+> documented in the
+> [toolkit repository's docs/voice-mode.md](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/docs/voice-mode.md)
+> and no longer depends on any extension code. Both exist; this one is
+> extension-specific and requires a Gemini API key.
 
 The extension's voice mode (side panel + offscreen document) is a hands-free
 control surface for the whole toolkit. It streams microphone audio to the
@@ -69,8 +78,8 @@ proposal count, and is instructed to trust tool results over that snapshot.
   lives in the offscreen page); pressing it also injects a `[UI update]` turn
   so the model knows.
 - **Type instead of speaking**: a text input that submits `voiceTextTurn` into
-  the same conversation — for speech-impaired users, noisy rooms, and
-  deterministic tests.
+  the same conversation — for people with non-standard speech, noisy rooms,
+  and deterministic tests.
 - **Pending-suggestions pill**: click → asks the agent "What suggestions are
   waiting for me?" (visual consent cards stay in the popup).
 
@@ -90,9 +99,9 @@ proposal count, and is instructed to trust tool results over that snapshot.
 
 ## Adversarial review
 
-A three-lens Fable review (consent/safety, correctness, MV3 lifecycle) with
-per-finding verification ran against the tool surface. It confirmed 21 issues;
-the fixed ones:
+A three-lens adversarial review (consent/safety, correctness, MV3 lifecycle)
+with per-finding verification ran against the tool surface. It confirmed 21
+issues; the fixed ones:
 
 - **Undo scope/tab corruption (mustFix)**: undo re-resolved each setting's
   scope against whatever tab was active at undo time, so a cross-tab undo
