@@ -46,8 +46,9 @@ npm package:
   extension's build does not manage this copy yet; when it runs from this
   repository again, give it the same copy-from-npm step.
 
-The toolkit repository still carries the older v4.11.3 copy for the original
-extension; the same bump should land there so the trees do not disagree.
+The toolkit repository's own copy (`cli/axe-core.min.js`, used by the CLI's
+`session audit`) is at the same v4.12.1, so the two repositories currently
+agree on what counts as a violation.
 
 ## Other libraries vendored in `extension/lib/`
 

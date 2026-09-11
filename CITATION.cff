@@ -1,11 +1,11 @@
 cff-version: 1.2.0
-title: AI for Accessibility Toolkit
-message: If you use this toolkit, please cite it using the metadata from this file.
+title: AI for Accessibility Extension
+message: If you use these extensions, please cite them using the metadata from this file.
 type: software
 authors:
   - name: AI for Accessibility Collective
-url: https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit
-repository-code: https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit
+url: https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Extension
+repository-code: https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Extension
 abstract: AI-powered Chrome extension that adapts any webpage to each user's abilities.
 keywords:
   - accessibility

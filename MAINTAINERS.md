@@ -17,7 +17,8 @@ When a route changes, it changes here.
 During the Collective's research phase (through November 2026), this
 repository is maintained by the project team of the AI for Accessibility
 Collective. Individual code contributions are recorded in the repository
-history and CITATION.cff.
+history; the citation entry (CITATION.cff) currently credits the
+Collective as a whole.
 
 ## After the research phase
 

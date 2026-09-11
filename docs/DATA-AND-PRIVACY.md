@@ -42,14 +42,24 @@ Only in these cases:
    to improve Google's AI services; on the paid tier Google states it is
    not. Their current terms control — see [COSTS.md](COSTS.md) and check
    Google's own pages.
-2. **You turn on remote mode.** Remote mode is **off unless you configure
+2. **You describe your needs in your own words.** During onboarding, and
+   when you ask the builders for a new adaptation, the description you
+   write is sent to Google's AI with your key so it can suggest matching
+   adaptations. That text is information about you, not about a page —
+   write only what you are comfortable sending, and remember the free-tier
+   caveat in point 1 applies to it too.
+3. **You use voice mode.** While the personalized extension's voice mode
+   is on, your microphone audio streams to Google's Gemini Live service
+   using your key, so it can hear and act on what you say. Turn voice
+   mode off and the microphone is not used.
+4. **You turn on remote mode.** Remote mode is **off unless you configure
    it**. If you point the extension at a server (for example, one run by a
    research team you are working with), your profile and profile-related
    requests go to that server. Whoever runs that server can see them — ask
    who runs it and how long they keep data before you turn this on. If you
    received this extension from a research team with remote mode already set
    up, they should have told you this and asked your consent.
-3. **You approve sharing with another app.** Another application can ask to
+5. **You approve sharing with another app.** Another application can ask to
    read parts of your profile. Nothing is shared until you approve, you can
    revoke at any time, and revoking stops all further reads. Two things are
    never shared this way: text you wrote in your own words, and the system's
