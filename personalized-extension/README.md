@@ -96,8 +96,8 @@ Because the Global db is **read-only at runtime**, contributions here are review
 
 ## Built-in adapters
 
-46 ship today, 16 of them flagged `quickStart` for fast onboarding. They cover
-vision (29), cognitive (19), motor (14), reading (10), sensory (8), and
+46 ship today, 14 of them flagged `quickStart` for fast onboarding. They cover
+vision (29), cognitive (19), motor (14), reading (9), sensory (8), and
 hearing (3) — an adapter usually serves more than one.
 
 `skills/registry.js` is the list, with each adapter's description, support
@@ -123,7 +123,7 @@ areas, and the settings it controls. A few to give the range:
 There is nothing to install or compile. The bundles this extension runs are
 committed.
 
-In Chrome: `chrome://extensions` → **Developer mode** → **Load unpacked** → select the `personalized-extension/extension/` folder. (Developer mode also enables `chrome.userScripts`, which custom adapters require.)
+In Chrome: `chrome://extensions` → **Developer mode** → **Load unpacked** → select the `personalized-extension/extension/` folder. (Custom adapters run as Chrome user scripts: in Chrome 138 and newer, also turn on **Allow User Scripts** on the extension's Details page; in Chrome 120–137, Developer mode is what enables them. See [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md).)
 
 To confirm a checkout is complete before loading it, run `npm run check:loadable` from the repository root.
 

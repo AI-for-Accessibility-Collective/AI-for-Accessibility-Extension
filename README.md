@@ -1,5 +1,6 @@
 <div align="center">
 
+
 # AI for Accessibility Extension
 
 **Chrome extensions that adapt web pages, in real time, to what each person needs**
@@ -39,7 +40,7 @@ over time what helps you and suggest more helpful changes.
 ## Install
 
 You need a computer (not a phone or tablet) with Google Chrome. Installing
-takes about ten minutes, cannot harm your computer, and is fully reversible
+takes about ten minutes, is designed to be safe to try, and is fully reversible
 (see [Removing it](#removing-it-and-erasing-what-it-learned)). The built
 extension files are committed, so there is nothing to compile.
 

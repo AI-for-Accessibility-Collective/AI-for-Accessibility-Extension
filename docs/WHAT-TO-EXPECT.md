@@ -29,8 +29,8 @@ page explains what that means for you.
 - **It cannot yet tell you what it changed.** An adapted page can look and
   behave quite differently from the original, and today the extension does
   not give you a summary of what it altered. A verification layer that does
-  this exists in the project's research code but is not active for users in
-  the current build. Until it is, know that "this page looked different for
+  this (the toolkit's "validators") exists in the project's research code
+  but is not active for users in the current build. Until it is, know that "this page looked different for
   me" is a real possibility in any conversation about a page.
 - **The profiles are starting points, not descriptions of you.** Picking
   "low vision" or "dyslexia" turns on a bundle of settings that many people
@@ -63,7 +63,7 @@ mitigation:
 
 | Risk | What we do about it | Status |
 |---|---|---|
-| You believe it adapts most pages well when it doesn't | This page; examples of failure as well as success; a test-bench for measuring adaptation quality | Test-bench: planned, see the toolkit [ROADMAP](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/ROADMAP.md) |
+| You believe it adapts most pages well when it doesn't | This page; examples of failure as well as success; a test-bench for measuring adaptation quality | Test-bench: scoped but deferred, see the toolkit [ROADMAP](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/ROADMAP.md) |
 | An adapted page differs from the original without you knowing | The verification layer describes changes | Built as research code; **not active for users yet** |
 | Developers treat this as a reason to skip building accessibly | The README says plainly it is not; links to guidance on building accessibly from the start | In place |
 | The cost of access shifts onto you (key + compute) | Plain setup instructions ([COSTS.md](COSTS.md)); funded-compute options under discussion | Instructions in place; funding unresolved |
