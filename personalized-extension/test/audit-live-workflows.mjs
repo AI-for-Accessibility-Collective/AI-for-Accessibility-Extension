@@ -12,6 +12,7 @@ import {holdoutWorkflows} from './fixtures/holdout-workflows.mjs';
 const workflows=process.argv.includes('--set=holdout')?holdoutWorkflows:tuned;
 import {decisionContext} from '@ai4a11y/tools/utils/verification-decisions.js';
 import { auditDir } from './audit-dir.mjs';
+// --profile='{"actor":{"thinking":"low"}}' changes only the calls it names.
 const profileArg=process.argv.find(a=>a.startsWith('--profile='))?.slice(10);
 if(!process.argv.includes('--live')||!process.env.GEMINI_API_KEY)throw Error('Requires --live and GEMINI_API_KEY');
 const filter=process.argv.find(a=>a.startsWith('--task='))?.slice(7);
@@ -56,13 +57,13 @@ try{
   });
   await worker.evaluate((key,profile)=>{
     globalThis.auditCalls=[];
-    if(profile)globalThis.ValidationModelCall?.setProfiles(JSON.parse(profile));
+    if(profile)globalThis.ValidationModelCall?.setProfiles(JSON.parse(profile),{merge:true});
     const call=async(prompt,opts={})=>{
       const c={tag:opts.tag||'actor',prompt,responseSchema:opts.responseSchema,images:opts.images||[],at:Date.now()};auditCalls.push(c);
       try{c.reply=await callGemini(prompt,key,opts);return c.reply;}
       catch(e){c.error=e.message;throw e;}finally{c.ms=Date.now()-c.at;}
     };
-    BrowserAgent.setGeminiCaller((prompt,_key,opts)=>call(prompt,opts));
+    BrowserAgent.setGeminiCaller((prompt,_key,opts)=>call(prompt,ValidationModelCall.withProfile('actor',opts||{})));
     ValidationReasoner.setGeminiCaller(call);ValidationReasoner.setGeminiStreamCaller(null);
     ValidationGenerate.setCaller((prompt,opts)=>call(prompt,{...opts,timeoutMs:opts?.timeoutMs??180000}));
   },process.env.GEMINI_API_KEY,profileArg||null);

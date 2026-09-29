@@ -28,7 +28,7 @@ import * as Trace from './trace.js';
 import * as Watch from './watch.js';
 import * as Probe from './probe.js';
 import * as Generate from './generate.js';
-import { setProfiles, profileFor } from './model-call.js';
+import { setProfiles, profileFor, withProfile } from './model-call.js';
 import { createController } from './controller.js';
 import { createDecisionResponder, findingKey, decisionIdentity } from '@ai4a11y/tools/utils/verification-decisions.js';
 import { actionKey } from './runtime.js';
@@ -958,7 +958,9 @@ async function observeByModel(snap, opts = {}) {
         const key = decisionIdentity([snap.url, observation.hash, row.question]);
         if (!runtimeState.continuations.includes(key)) {
           runtimeState.continuations = [...runtimeState.continuations, key].slice(-32);
-          globalThis.BrowserAgent?.interject?.(`${d.instruction} Then check: ${d.expected}. Keep the person's requirements unchanged.`, { source: 'verification' });
+          // Next-step advice, not a correction: the planned action still runs
+          // (and is still checked), and this is read before the one after.
+          globalThis.BrowserAgent?.interject?.(`${d.instruction} Then check: ${d.expected}. Keep the person's requirements unchanged.`, { source: 'verification', invalidate: false });
         }
       }
       if (d.relevance === 'now' && d.kind === 'repair') {
@@ -3111,7 +3113,7 @@ globalThis.ValidationProbe = Probe;
 // layer checks whatever task the shipped file happened to be built for.
 globalThis.ValidationGenerate = Generate;
 // Which model and thinking level each verification call uses (model-call.js).
-globalThis.ValidationModelCall = { setProfiles, profileFor };
+globalThis.ValidationModelCall = { setProfiles, profileFor, withProfile };
 
 // Exposed separately so the agent's start route can parse a sentence into a
 // contract before a run exists.

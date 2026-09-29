@@ -1271,11 +1271,11 @@ One word only.`;
     return { choice: "new", reason: "agent picked new tab" };
   }
   var _bhPending = [];
-  function bhAgentInterject(instruction, { source = "user" } = {}) {
+  function bhAgentInterject(instruction, { source = "user", invalidate = true } = {}) {
     const t = String(instruction || "").trim();
     if (!t) return { queued: 0 };
     _bhPending.push({ text: t, source: source === "verification" ? "verification" : "user" });
-    invalidateActions();
+    if (invalidate) invalidateActions();
     return { queued: _bhPending.length };
   }
   var BH_AGENT_PAUSE_POLL_MS = 300;

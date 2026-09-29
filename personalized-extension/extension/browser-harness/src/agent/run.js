@@ -114,11 +114,15 @@ const _bhPending = [];
  *
  * @param {string} instruction in their terms — "open the runner-up instead"
  */
-export function bhAgentInterject(instruction, { source = 'user' } = {}) {
+export function bhAgentInterject(instruction, { source = 'user', invalidate = true } = {}) {
   const t = String(instruction || '').trim();
   if (!t) return { queued: 0 };
   _bhPending.push({ text: t, source: source === 'verification' ? 'verification' : 'user' });
-  invalidateActions();
+  // A correction throws away the action the agent already planned. A note that
+  // only says what to do next (invalidate: false) is read at the next step
+  // instead: throwing the plan away for it cost a whole extra planning call,
+  // about six times a task, usually to plan the same action again.
+  if (invalidate) invalidateActions();
   return { queued: _bhPending.length };
 }
 

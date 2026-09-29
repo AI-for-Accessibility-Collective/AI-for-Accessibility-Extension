@@ -91,10 +91,14 @@ assert(calls.includes('review-evidence'));
 page='Hotel total $225. Search other hotels.'; quote='Hotel total $225'; answer='This hotel costs $225.';
 decision={...observe('This hotel is over $200. I’ll keep looking within your budget.'),kind:'continue',
   requestQuote:'under $200',instruction:'Search other hotels under $200.',expected:'Hotel search results are visible.'};
-await start(); await V.observe(1);
+await start();
+const beforeContinuation=S.getInstructionRevision();
+await V.observe(1);
 assert.equal(state().gate.allowed,true);assert.equal(state().runtimeState.pending.length,0);
+// Next-step advice is queued for the agent without throwing away the action
+// it already planned; that action is still checked before it runs.
 const continuationRevision=S.getInstructionRevision();
-assert(continuationRevision>0);assert.equal(state().runtimeState.continuations.length,1);
+assert.equal(continuationRevision,beforeContinuation);assert.equal(state().runtimeState.continuations.length,1);
 await V.observe(1);assert.equal(S.getInstructionRevision(),continuationRevision);
 
 // Explicit corrections discard a plan made before the correction, then execute

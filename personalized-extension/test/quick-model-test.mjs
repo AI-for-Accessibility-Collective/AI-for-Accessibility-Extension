@@ -2,7 +2,7 @@
 // switch that decides whether a task is checked at all.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { quickModel, quickPrompt, QUICK_SCHEMA } from '../extension/validation/quick-model.js';
+import { quickModel, quickPrompt, QUICK_SCHEMA, describePerson } from '../extension/validation/quick-model.js';
 import { flattenModel } from '../extension/validation/reasoner.js';
 import { plainError } from '../extension/validation/plain-errors.js';
 import { profileFor } from '../extension/validation/model-call.js';
@@ -39,12 +39,21 @@ await assert.rejects(quickModel('x', {}), /No task-model provider/);
 // Where the run has gone off the expected path, the page travels with it.
 assert(quickPrompt('Book it', { page: { url: 'https://x.test', evidence: { quote: 'Pickup only' } } }).includes('Pickup only'));
 
+// The checklist knows coarse needs from the ability model, never free text.
+assert.equal(describePerson(null), null);
+const person = describePerson({ supportAreas: ['low vision'], vision: { descriptions: true }, input: {}, cognition: { language: 'plain' },
+  freeText: 'I had surgery last year and my left eye is weak' });
+assert.match(person, /low vision/); assert.match(person, /described/); assert.match(person, /plain language/);
+assert(!/surgery/.test(person), 'free text never leaves');
+assert(quickPrompt('Book it', { person }).includes('needs pictures and video described'));
+assert(quickPrompt('Book it').includes('Assume they cannot easily see the screen'));
+
 // A key that cannot reach the preferred model falls back to the agent's own.
 const models = [];
 const fell = await quickModel('Book a hotel', { caller: async (prompt, opts) => { models.push(opts.model);
   if (models.length === 1) throw new Error('Gemini API error 404: models/gemini-3.8-flash is not found for API version v1beta');
   return JSON.stringify(reply); } });
-assert.equal(models[1], 'gemini-3.5-flash'); assert.equal(fell.tree.id, '0');
+assert.equal(models[0], 'gemini-3.8-flash'); assert.equal(models[1], undefined, 'the caller\'s default model'); assert.equal(fell.tree.id, '0');
 await assert.rejects(quickModel('x', { caller: async () => { throw new Error('Gemini API error 429: quota'); } }), /429/);
 
 // Errors in words the person can act on.

@@ -40,7 +40,7 @@ try{
       try{c.reply=await callGemini(prompt,key,opts);return c.reply;}
       catch(e){c.error=e.message;throw e;}finally{c.ms=Date.now()-at;}
     };
-    BrowserAgent.setGeminiCaller((prompt,_key,opts)=>call(prompt,opts));
+    BrowserAgent.setGeminiCaller((prompt,_key,opts)=>call(prompt,ValidationModelCall.withProfile('actor',opts||{})));
     ValidationReasoner.setGeminiCaller(call);ValidationReasoner.setGeminiStreamCaller(null);
     ValidationGenerate.setCaller((prompt,opts)=>call(prompt,{...opts,timeoutMs:opts?.timeoutMs??180000}));
     for(const method of ['typeText','typeIndex','uploadFileIndex','selectDropdown']){

@@ -746,7 +746,11 @@ if (globalThis.BrowserAgent) {
   globalThis.BrowserAgent.setGeminiCaller(async (prompt, apiKey, opts) => {
     const key = apiKey || await getApiKey();
     if (!key) throw new Error('No Gemini API key configured. Open extension settings.');
-    return await callGemini(prompt, key, opts);
+    // The agent's own model and thinking level, if validation/model-call.js
+    // sets one for it; unset, the agent keeps the defaults.
+    const tuned = !Array.isArray(opts) && globalThis.ValidationModelCall?.withProfile
+      ? globalThis.ValidationModelCall.withProfile('actor', opts || {}) : opts;
+    return await callGemini(prompt, key, tuned);
   });
 }
 
