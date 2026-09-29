@@ -1,5 +1,6 @@
 // Owns task preparation across the panel, verifier and browser agent.
 import { plainError } from './plain-errors.js';
+import { describePerson } from './quick-model.js';
 
 export function createController(host = globalThis, { timeoutMs = 150000 } = {}) {
   let pending = null;
@@ -36,7 +37,10 @@ export function createController(host = globalThis, { timeoutMs = 150000 } = {})
         if (!G?.hasCaller?.()) throw new Error('No task-model provider is configured.');
         // Written from the request itself, plus the page when the run has
         // moved somewhere the first model did not expect.
-        const model = await G.writeModel(request, { signal: token,
+        let person = null;
+        try { person = describePerson(await host.Librarian?.getAbilityModel?.()); } catch { /* no profile: the default reader */ }
+        if (!valid()) throw new Error('Task preparation was stopped.');
+        const model = await G.writeModel(request, { signal: token, person,
           page: context ? { url: context.url, evidence: context.evidence || null } : null });
         if (!valid()) throw new Error('Task preparation was superseded.');
         if (!model?.tree) throw new Error('No task model was produced.');

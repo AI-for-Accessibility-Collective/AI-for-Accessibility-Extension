@@ -17,7 +17,7 @@ export function hasCaller() { return typeof caller === 'function'; }
 
 /** The task model for a request, in one call (quick-model.js). */
 export function writeModel(request, opts = {}) {
-  return quickModel(request, { caller: opts.caller ?? caller, signal: opts.signal, page: opts.page });
+  return quickModel(request, { caller: opts.caller ?? caller, signal: opts.signal, page: opts.page, person: opts.person });
 }
 
 const MOMENTS = new Set(['Now', 'After', 'Completion', 'On demand']);
