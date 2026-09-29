@@ -15,7 +15,8 @@
     "audit:actions": "node test/audit-live-actions.mjs --live",
     "audit:attention": "node test/audit-live-attention.mjs --live",
     "audit:workflows": "node test/audit-live-workflows.mjs --live",
-    "test": "node test/run-verification-tests.mjs"
+    "test": "node test/run-verification-tests.mjs",
+    "audit:copy": "node test/audit-copy-transfer.mjs --live"
   },
   "devDependencies": {
     "@ai4a11y/toolkit": "file:../vendor/ai4a11y-toolkit.tgz",
