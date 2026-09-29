@@ -2673,6 +2673,10 @@ ${a.instruction}`)];
       if (claimSupported && continuation) decision = continuation;
       else if (c.decision && (!decision || r.decisionSupported !== true)) {
         if (commitLater) attention = { mode: "update", blockingStep: "" };
+        if (c.decision.kind !== "choose" && !reviewIds.includes(c.id) && attention.mode === "ask") {
+          issues.push(`${c.id}: reviewer asked about a step the reader did not`);
+          attention = { mode: "update", blockingStep: "" };
+        }
         decision = attention.mode !== "ask" ? {
           relevance: r.relevance,
           kind: "observe",

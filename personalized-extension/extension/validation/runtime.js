@@ -365,6 +365,15 @@ Mark branch.changed only for an evidenced workflow change needing HTA adaptation
       // A commitment falls back to being told, never to a hand-over card: the
       // gate still asks at the button itself.
       if (commitLater) attention = { mode: 'update', blockingStep: '' };
+      // The hand-over card replaces a question whose options failed review.
+      // Where the reader asked nothing, there is no question to replace: a
+      // reviewer's wish to ask about a later step is told, not asked. The
+      // action gate still stops any action that skips a choice the request
+      // reserves for the person.
+      if (c.decision.kind !== 'choose' && !reviewIds.includes(c.id) && attention.mode === 'ask') {
+        issues.push(`${c.id}: reviewer asked about a step the reader did not`);
+        attention = { mode: 'update', blockingStep: '' };
+      }
       decision = attention.mode !== 'ask'
         ? { relevance: r.relevance, kind: 'observe', message: c.answer,
           question: '', requestQuote: '', instruction: '', expected: '', choices: [] }

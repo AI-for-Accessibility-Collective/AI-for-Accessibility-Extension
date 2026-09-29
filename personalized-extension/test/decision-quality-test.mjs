@@ -125,6 +125,15 @@ assert(!notAsked.answers[0].runtime);
   assert.equal(b.runtime.decision.choices[0].action,'handover');
   assert.equal(b.runtime.duplicateOf,'a','the stand-in card is not asked after the real question');
 }
+// The reader only reported progress; the reviewer wants to ask about a later
+// step. That is told, not turned into a hand-over card.
+{
+  const progress={kind:'observe',relevance:'now',message:'The draft is saved.',question:'',requestQuote:'',instruction:'',expected:'',choices:[]};
+  const told=await reviewEvidence({answers:[{id:'q',question:'Did it save?',answer:'Harbor has step-free access.',quote:'Harbor has step-free access.',verify:'verified_exact',decision:progress}],noticed:[]},
+    {page,request,refine:false,call:async()=>JSON.stringify({reviews:[{id:'q',...verdict,decisionSupported:false,choiceReviews:[],attention:{mode:'ask',blockingStep:'Ask which Alex later.'}}],outcomes:[],milestones:[],branch:{changed:false}})});
+  assert.equal(told.answers[0].runtime.decision.kind,'observe');
+  assert.notEqual(told.answers[0].runtime.support.attention.mode,'ask');
+}
 let edits=0,reviews=0;
 const retry=await reviewEvidence({answers:[{id:'q',question:'Which hotel?',answer:'Zen has three entrance steps.',quote:'Zen has three entrance steps.',verify:'verified_exact',decision}],noticed:[]},
   {page,request,call:async(_prompt,{tag,responseSchema})=>{
