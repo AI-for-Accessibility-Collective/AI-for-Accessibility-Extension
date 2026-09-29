@@ -34,7 +34,7 @@ const generator = { hasCaller: () => true,
   async codeCandidate(model) { return model; },
   async writeModel(task) { return bank(task); } };
 globalThis.ValidationGenerate = generator;
-globalThis.ValidationController = createController(globalThis, { timeoutMs: 40 });
+globalThis.ValidationController = createController(globalThis, { timeoutMs: 600 });
 
 // Exercise the actual background message branches, not a second handler.
 const background = fs.readFileSync('extension/background.js', 'utf8');
@@ -207,10 +207,10 @@ await V.stop();
 // Writing the model and coding it each make progress. A slow first stage must
 // not spend the time reserved for the second.
 const savedGenerator={...generator};
-const delay=()=>new Promise(resolve=>setTimeout(resolve,90));
+const delay=()=>new Promise(resolve=>setTimeout(resolve,400));
 generator.writeModel=async task=>{await delay();return bank(task)};
 generator.codeCandidate=async model=>{await delay();return model};
-const stagedController=createController(globalThis,{timeoutMs:150});
+const stagedController=createController(globalThis,{timeoutMs:700});
 const staged=await stagedController.start({task:'Prepare a large task model',tabId:1});
 assert.equal(staged.started,true,JSON.stringify(staged));
 stagedController.cancel();await V.stop();Object.assign(generator,savedGenerator);

@@ -74,7 +74,9 @@ ok(holdClock({ on: 'Q', since: NOW - 60_000 }, NOW, T).waitedMs === 60_000,
 
 // ── the same clock, wired to a real session ─────────────────────────────────
 
-Validation.setHoldTimeouts({ remindMs: 40, stopMs: 200 });
+// Wide enough that a busy machine (or CI runner) cannot cross the first
+// interval between starting the hold and the first check of it.
+Validation.setHoldTimeouts({ remindMs: 1500, stopMs: 4000 });
 
 await Validation.start('girls flat sandals size 5 under $40');
 // One unread finding is all it takes: publish() derives the hold from what the
@@ -97,7 +99,7 @@ ok(held.hold?.on === 'Which size went in?', 'and what it is waiting on');
     'nothing is re-said before the first interval is up');
 }
 
-await sleep(60);
+await sleep(1700);
 {
   await Validation.allow('scroll down');
   const again = spoken.filter((m) => /Still waiting/.test(m.lines?.[0]?.say || ''));
@@ -113,7 +115,7 @@ await sleep(60);
   ok(g.allowed === false, 'and it does not let the agent through either');
 }
 
-await sleep(220);
+await sleep(2600);
 {
   const g = await Validation.allow('click add to cart');
   ok(stops.length === 1, 'past the second interval the run is stopped');
