@@ -32,6 +32,7 @@ export function mountValidationPanel(root, { onControl } = {}) {
 
   let state = null;
   let checksOn = false;     // the one setting: is the agent's work checked?
+  let editing = null;       // which inline editor is open: 'request' or 'gap:<field>'
   let lastPainted = null;   // skip rebuilds when nothing changed
   let focusedGate = null;   // focus the gate once per new hold, not per render
 
@@ -55,7 +56,7 @@ export function mountValidationPanel(root, { onControl } = {}) {
     // scroll position, their focus, or the text they are mid-typing.
     // `updated` is a timestamp that changes on every publish - leaving it in
     // meant the guard never matched and every publish rebuilt the panel.
-    const now = JSON.stringify([checksOn, state ? { ...state, updated: 0 } : null]);
+    const now = JSON.stringify([checksOn, editing, state ? { ...state, updated: 0 } : null]);
     if (now === lastPainted) return;
     lastPainted = now;
 
@@ -93,11 +94,18 @@ export function mountValidationPanel(root, { onControl } = {}) {
     const ask = el(held ? 'details' : 'section', 'va-ask');
     ask.append(el(held ? 'summary' : 'h2', null, 'What you asked for'));
     ask.append(el('p', null, state.opts?.request || describe(c)));
-    const edit = el('button', 'va-edit', 'Change something');
-    edit.addEventListener('click', () => onControl?.(state.opts?.requireModel
-      ? { action: 'edit-ask', field: 'request', value: state.opts.request || c.said }
-      : { action: 'edit-ask' }));
-    ask.append(edit);
+    if (state.opts?.requireModel && editing === 'request') {
+      ask.append(inlineEditor('request', 'Your request', state.opts.request || c.said || ''));
+    } else {
+      const edit = el('button', 'va-edit', 'Change something');
+      edit.dataset.vaKey = 'edit-request';
+      edit.addEventListener('click', () => {
+        if (!state.opts?.requireModel) { onControl?.({ action: 'edit-ask' }); return; }
+        editing = 'request'; render();
+        root.querySelector('[data-va-key="editor:request"]')?.focus();
+      });
+      ask.append(edit);
+    }
     root.append(ask);
 
     if (state.modelState?.status === 'preparing' || state.modelState?.status === 'failed') {
@@ -166,10 +174,17 @@ export function mountValidationPanel(root, { onControl } = {}) {
       const q = el('section', 'va-gap');
       q.append(el('p', 'va-text', g.ask));
       q.append(el('p', 'va-where', `without it I can't check ${g.unchecked[0]}`));
-      const b = el('button', 'va-do', 'Answer');
-      b.dataset.vaKey = `gap:${g.field}`;
-      b.addEventListener('click', () => onControl?.({ action: 'fill-gap', field: g.field }));
-      q.append(b);
+      if (editing === `gap:${g.field}`) {
+        q.append(inlineEditor(g.field, 'Your answer', ''));
+      } else {
+        const b = el('button', 'va-do', 'Answer');
+        b.dataset.vaKey = `gap:${g.field}`;
+        b.addEventListener('click', () => {
+          editing = `gap:${g.field}`; render();
+          root.querySelector(`[data-va-key="editor:${g.field}"]`)?.focus();
+        });
+        q.append(b);
+      }
       root.append(q);
     }
 
@@ -519,6 +534,41 @@ export function mountValidationPanel(root, { onControl } = {}) {
   // that is worth doing whether or not an agent is the one clicking. Someone
   // shopping themselves still cannot see that the size on the page stopped
   // matching the size they asked for.
+  // Editing in place, in a labelled field, instead of the browser's pop-up
+  // input box: the pop-up takes the person out of the panel and back, and
+  // reads differently with each screen reader. Enter saves, Escape cancels.
+  function inlineEditor(field, labelText, value) {
+    const form = el('form', 'va-inline-edit');
+    const id = `va-edit-${field}`;
+    const label = el('label', null, labelText);
+    label.setAttribute('for', id);
+    const input = el('input');
+    input.type = 'text';
+    input.id = id;
+    input.value = value;
+    input.dataset.vaKey = `editor:${field}`;
+    const row = el('div', 'va-start-row');
+    const save = el('button', 'va-do primary', 'Save');
+    save.type = 'submit';
+    const cancel = el('button', 'va-do', 'Cancel');
+    cancel.type = 'button';
+    const close = () => { editing = null; render(); root.querySelector(field === 'request'
+      ? '[data-va-key="edit-request"]' : `[data-va-key="gap:${field}"]`)?.focus(); };
+    cancel.addEventListener('click', close);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) { input.focus(); return; }
+      editing = null;
+      onControl?.({ action: field === 'request' ? 'edit-ask' : 'fill-gap', field, value: text, inline: true });
+      render();
+    });
+    row.append(input, save, cancel);
+    form.append(label, row);
+    return form;
+  }
+
   // The switch for checking the agent's work. Off unless the person turns it
   // on; the popup shows the same setting.
   function settingCard() {

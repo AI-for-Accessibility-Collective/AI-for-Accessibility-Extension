@@ -247,8 +247,18 @@ try {
   // Use the real panel control to replace the request, then inspect the model.
   await panel.bringToFront();
   await panel.waitForFunction(() => document.querySelector('.va-ask')?.textContent.includes('Check this hotel review for me'));
-  panel.once('dialog', dialog => { console.log('edit dialog:', dialog.message()); return dialog.accept('Check this hotel review for three adults'); });
+  // Edited in place: a labelled field opens in the panel, with focus in it,
+  // and Enter saves. No browser pop-up.
+  let popup = false; panel.once('dialog', dialog => { popup = true; return dialog.dismiss(); });
   await panel.click('.va-edit');
+  await panel.waitForSelector('.va-inline-edit input');
+  const editor = await panel.$eval('.va-inline-edit input', n => ({ focused: document.activeElement === n,
+    label: n.labels?.[0]?.textContent, value: n.value }));
+  assert(editor.focused && editor.label === 'Your request' && editor.value.includes('Check this hotel review for me'), JSON.stringify(editor));
+  await panel.$eval('.va-inline-edit input', n => { n.value = ''; });
+  await panel.type('.va-inline-edit input', 'Check this hotel review for three adults');
+  await panel.keyboard.press('Enter');
+  assert.equal(popup, false, 'no browser pop-up');
   const edited = await until(s => s['aa.validation']?.opts?.request === 'Check this hotel review for three adults'
     && s['aa.validation']?.modelState?.status === 'ready', 'edited request');
   assert.equal(edited['aa.validation'].taskId, checking.taskId);

@@ -300,3 +300,10 @@ details.va-back,.va-history { padding: 10px 14px; }
 .va-revgroup summary { cursor: pointer; font-weight: 500; }
 .va-revgroup summary:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
 .va-preparation, .va-completion { padding: 12px 14px; border-bottom: 1px solid #ddd; overflow-wrap: anywhere; }
+
+/* ── editing in place ────────────────────────────────────────────────────── */
+.va-inline-edit { margin-top: 8px; }
+.va-inline-edit label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #374151; }
+.va-inline-edit input { flex: 1 1 auto; min-width: 0; font: inherit; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; }
+.va-inline-edit input:focus-visible { outline: 2px solid #1a73e8; outline-offset: 1px; }
+.va-inline-edit .va-do { margin-top: 0; }

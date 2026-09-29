@@ -433,6 +433,11 @@ if (vaRoot) {
         chrome.runtime.sendMessage({ type: 'validationWhy', nodeId: c.nodeId });
         return;
       }
+      if ((c.action === 'edit-ask' || c.action === 'fill-gap') && c.inline && c.field && c.value?.trim()) {
+        // Typed into the panel's own field.
+        chrome.runtime.sendMessage({ type: 'validationEdit', field: c.field, value: c.value.trim() });
+        return;
+      }
       if (c.action === 'edit-ask' || c.action === 'fill-gap') {
         // These fell through to validationControl, whose say-map knows
         // neither - so "Change something" and every gap "Answer" button
