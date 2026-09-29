@@ -8,7 +8,7 @@
   "scripts": {
     "build": "node build.js",
     "watch": "node build.js --watch",
-    "test:browser": "node test/extension-integration-test.mjs && node test/background-input-test.mjs",
+    "test:browser": "node test/extension-integration-test.mjs && node test/background-input-test.mjs && node test/checks-off-e2e.mjs",
     "test:live": "node test/live-runtime-test.mjs --live",
     "audit:journey": "node test/audit-live-journey.mjs --live",
     "audit:agent": "node test/audit-live-agent.mjs --live",
