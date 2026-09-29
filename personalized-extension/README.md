@@ -178,6 +178,8 @@ no sibling toolkit checkout is needed:
 node test/librarian-test.js      # Librarian regression gate (also `npm test` at the root)
 node test/run-tests.js           # Bundle + registry checks
 node test/verifier-test.mjs      # Validation layer (imports resolve from the vendored packages)
+npm test                         # Every offline test of the agent checks (no model calls, no browser)
+GEMINI_API_KEY=... npm run audit:workflows  # Live: the agent and its checks on five local practice sites
 npm run watch                    # Rebuild on changes
 npm run build                    # One-time build
 ```

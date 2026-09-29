@@ -106,6 +106,17 @@ It starts with onboarding: describe your needs in your own words, pick
 what sounds useful, and go. It suggests; you decide. Nothing about your
 profile changes without your yes.
 
+The personalized extension also has a browser agent that can do a task
+for you, like booking a room or returning an order. It works on its own
+unless you turn on **Check the agent's work**, a switch in the popup
+under Browser Agent and at the top of the side panel. With it on, the
+extension reads your request and each page the agent visits, asks you
+before choices it should not make for you, and holds anything that pays,
+books, sends or deletes until you say yes. For example, if a hotel total
+comes out above the budget you gave, it asks whether to raise the budget
+or look somewhere else. A task takes about 15 seconds longer to start
+while it prepares, and it uses the same Gemini key as the agent.
+
 ## Updating
 
 A folder install does not update itself. When a new version is announced,

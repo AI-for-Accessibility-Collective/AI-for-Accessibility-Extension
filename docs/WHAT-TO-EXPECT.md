@@ -32,6 +32,13 @@ page explains what that means for you.
   this (the toolkit's "validators") exists in the project's research code
   but is not active for users in the current build. Until it is, know that "this page looked different for
   me" is a real possibility in any conversation about a page.
+- **Checking the agent's work is new and off unless you turn it on.**
+  The **Check the agent's work** switch makes the personalized extension
+  ask you before choices and hold payments, bookings and messages until
+  you say yes. It is research code. It makes each task slower, it can
+  still miss a problem or ask about something that did not need asking,
+  and it has not been tested with blind or low-vision participants yet.
+  Keep listening to what the agent says it did.
 - **The profiles are starting points, not descriptions of you.** Picking
   "low vision" or "dyslexia" turns on a bundle of settings that many people
   with that experience find useful. It is not a claim about what you need —
@@ -65,6 +72,7 @@ mitigation:
 |---|---|---|
 | You believe it adapts most pages well when it doesn't | This page; examples of failure as well as success; a test-bench for measuring adaptation quality | Test-bench: scoped but deferred, see the toolkit [ROADMAP](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/ROADMAP.md) |
 | An adapted page differs from the original without you knowing | The verification layer describes changes | Built as research code; **not active for users yet** |
+| The agent does something you did not ask for | **Check the agent's work** asks before choices and holds anything that pays, books, sends or deletes for your yes | Off by default; research code, not yet tested with participants |
 | Developers treat this as a reason to skip building accessibly | The README says plainly it is not; links to guidance on building accessibly from the start | In place |
 | The cost of access shifts onto you (key + compute) | Plain setup instructions ([COSTS.md](COSTS.md)); funded-compute options under discussion | Instructions in place; funding unresolved |
 | The system infers a need you don't have | Everything is suggest-only with your consent; observation-based inference ships only after consented data collection | Consent gate in place |
