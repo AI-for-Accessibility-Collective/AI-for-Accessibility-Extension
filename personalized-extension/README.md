@@ -187,6 +187,11 @@ npm run build                    # One-time build
 `test/skills-page-test.js` additionally needs a local Chromium, so it is
 skipped in CI.
 
+This version of the agent checks does not use the task dataset from our
+study. It writes its own checklist from the person's request when the task
+starts (`extension/validation/quick-model.js`). The dataset is not public
+yet, and we plan to integrate it later for the kinds of task it covers.
+
 Reload the extension in `chrome://extensions` to pick up a new commit.
 `extension/lib/*.js` and every `*.bundle.js` are build outputs. Do not
 hand-edit them: change the source in the toolkit repository (or
