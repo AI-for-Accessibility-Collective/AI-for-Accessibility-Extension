@@ -4482,6 +4482,7 @@ PAGE>>>`;
   });
 
   // extension/validation/quick-model.js
+  var DEFAULT_MODEL = "gemini-3.5-flash";
   var CLUSTERS = ["refine", "compare", "facts", "select", "approve", "receipts", "undo", "watch", "hand over", "photos"];
   var MOMENTS = ["Now", "After", "Completion", "On demand"];
   var COST_DIMS2 = ["money", "privacy", "thirdParty", "safety", "reversibility", "recovery"];
@@ -4596,7 +4597,7 @@ Answer with only the JSON object.`;
   }
   async function quickModel(request, { caller: caller2, signal, page } = {}) {
     if (typeof caller2 !== "function") throw new Error("No task-model provider is configured.");
-    const text2 = await callWithRetry(caller2, quickPrompt(request, { page }), {
+    const options = {
       tag: "quick-model",
       temperature: 0.2,
       mimeType: "application/json",
@@ -4604,7 +4605,14 @@ Answer with only the JSON object.`;
       maxOutputTokens: 16384,
       timeoutMs: 6e4,
       signal
-    });
+    };
+    let text2;
+    try {
+      text2 = await callWithRetry(caller2, quickPrompt(request, { page }), options);
+    } catch (error) {
+      if (!/\b404\b|not[ _]found|is not supported|not available/i.test(error?.message || "") || signal?.aborted) throw error;
+      text2 = await callWithRetry(caller2, quickPrompt(request, { page }), { ...options, model: DEFAULT_MODEL });
+    }
     if (signal?.aborted) throw new Error("Task-model preparation was stopped.");
     const model = JSON.parse(String(text2).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
     model.tree.id = "0";

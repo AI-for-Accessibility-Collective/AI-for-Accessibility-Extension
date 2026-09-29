@@ -39,6 +39,14 @@ await assert.rejects(quickModel('x', {}), /No task-model provider/);
 // Where the run has gone off the expected path, the page travels with it.
 assert(quickPrompt('Book it', { page: { url: 'https://x.test', evidence: { quote: 'Pickup only' } } }).includes('Pickup only'));
 
+// A key that cannot reach the preferred model falls back to the agent's own.
+const models = [];
+const fell = await quickModel('Book a hotel', { caller: async (prompt, opts) => { models.push(opts.model);
+  if (models.length === 1) throw new Error('Gemini API error 404: models/gemini-3.8-flash is not found for API version v1beta');
+  return JSON.stringify(reply); } });
+assert.equal(models[1], 'gemini-3.5-flash'); assert.equal(fell.tree.id, '0');
+await assert.rejects(quickModel('x', { caller: async () => { throw new Error('Gemini API error 429: quota'); } }), /429/);
+
 // Errors in words the person can act on.
 assert.match(plainError(new Error('No Gemini API key configured.')), /API key in the extension settings/);
 assert.match(plainError('Gemini API error 429: RESOURCE_EXHAUSTED'), /busy/);

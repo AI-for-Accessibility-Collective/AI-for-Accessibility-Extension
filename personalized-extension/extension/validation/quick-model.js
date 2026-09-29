@@ -14,6 +14,9 @@
 
 import { callWithRetry } from './model-call.js';
 
+// The agent's own model, used when the preferred one is out of this key's reach.
+const DEFAULT_MODEL = 'gemini-3.5-flash';
+
 const CLUSTERS = ['refine', 'compare', 'facts', 'select', 'approve', 'receipts', 'undo', 'watch', 'hand over', 'photos'];
 const MOMENTS = ['Now', 'After', 'Completion', 'On demand'];
 const COST_DIMS = ['money', 'privacy', 'thirdParty', 'safety', 'reversibility', 'recovery'];
@@ -126,8 +129,18 @@ function validate(model) {
  */
 export async function quickModel(request, { caller, signal, page } = {}) {
   if (typeof caller !== 'function') throw new Error('No task-model provider is configured.');
-  const text = await callWithRetry(caller, quickPrompt(request, { page }), { tag: 'quick-model', temperature: 0.2,
-    mimeType: 'application/json', responseSchema: QUICK_SCHEMA, maxOutputTokens: 16384, timeoutMs: 60000, signal });
+  const options = { tag: 'quick-model', temperature: 0.2,
+    mimeType: 'application/json', responseSchema: QUICK_SCHEMA, maxOutputTokens: 16384, timeoutMs: 60000, signal };
+  let text;
+  try {
+    text = await callWithRetry(caller, quickPrompt(request, { page }), options);
+  } catch (error) {
+    // Not every key can reach the faster model this call prefers
+    // (model-call.js). One the key cannot reach falls back to the agent's own
+    // model rather than stopping the task.
+    if (!/\b404\b|not[ _]found|is not supported|not available/i.test(error?.message || '') || signal?.aborted) throw error;
+    text = await callWithRetry(caller, quickPrompt(request, { page }), { ...options, model: DEFAULT_MODEL });
+  }
   if (signal?.aborted) throw new Error('Task-model preparation was stopped.');
   const model = JSON.parse(String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
   model.tree.id = '0';
