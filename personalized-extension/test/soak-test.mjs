@@ -86,10 +86,17 @@ globalThis.BrowserHarness = {
 };
 
 // ── the model, the session, the caller ──────────────────────────────────────
-const hotel = JSON.parse(readFileSync(join(ROOT, 'extension/validation/htas/hotel.json'), 'utf8'));
+// A large written model: twelve phases of eight steps, two questions each.
+const coded = { cluster: 'facts', moment: 'After', moneyMoving: false,
+  costDims: { money: 1, privacy: 0, thirdParty: 0, safety: 0, reversibility: 0, recovery: 1 } };
+const hotel = { task: 'book a hotel', tree: { id: '0', label: 'Book a hotel', children:
+  Array.from({ length: 12 }, (_, p) => ({ id: String(p + 1), label: `Phase ${p + 1}`, children:
+    Array.from({ length: 8 }, (_, k) => ({ id: `${p + 1}.${k + 1}`, label: `Step ${k + 1}`, questions: [
+      { question: `Is check ${p + 1}.${k + 1} right?`, ...coded },
+      { question: `Is the value at ${p + 1}.${k + 1} what you asked for?`, ...coded }] })) })) } };
 const R = await import('../extension/validation/reasoner.js');
 const S = (await import('../extension/validation/session.js')).default;
-globalThis.ValidationTaskModel.load(hotel, 'validation/htas/hotel.json');
+globalThis.ValidationTaskModel.load(hotel, 'generated');
 
 const flat = R.flattenModel(hotel);
 // Questions answered by the mock. Multi-question nodes only, because adopt()

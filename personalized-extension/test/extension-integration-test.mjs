@@ -60,16 +60,23 @@ try {
       try { return await complete(...args); }
       catch (error) { qc.completionError = {message:error.message,stack:error.stack}; throw error; }
     };
-    const model = await (await fetch(chrome.runtime.getURL('validation/htas/hotel.json'))).json();
+    // The model the writer would return for this request, with the guest-count check.
+    const coded = { cluster: 'facts', moment: 'Now', paradigm: 3, moneyMoving: false, why: 'the room must fit everyone.',
+      costDims: { money: 1, privacy: 0, thirdParty: 0, safety: 0, reversibility: 0, recovery: 1 } };
+    const model = { task: 'prepare a hotel booking for review', ask: 'under $200', tree: { id: '0', label: 'Prepare a hotel booking', plan: 'do 1, then 2.', children: [
+      { id: '1', label: 'Set the search', plan: 'do 1.1.', children: [{ id: '1.1', label: 'Set the party', questions: [
+        { question: 'Does the party the search is set to match the party you gave?', ...coded }] }] },
+      { id: '2', label: 'Review', plan: 'do 2.1.', children: [{ id: '2.1', label: 'Read the total', questions: [
+        { question: 'Is the total under $200?', ...coded, moment: 'After' }] }] },
+    ] } };
     const q = ValidationReasoner.flattenModel(model).questions.find(q => q.question === 'Does the party the search is set to match the party you gave?');
-    if (!q) throw new Error('Fixture needs the guest-count check');
     qc.question = q;
+    await chrome.storage.sync.set({ verificationLayer: true });
     ValidationGenerate.setCaller(async (prompt, opts) => {
       qc.calls.push(opts.tag);
       if (qc.mode === 'failure') throw new Error('Fixture provider unavailable');
       if (qc.mode === 'slow') await new Promise(resolve => { qc.release = resolve; });
-      if (opts.tag === 'select-hta') return JSON.stringify({ status: 'selected', ids: ['hotel'] });
-      if (opts.tag === 'adapt') return JSON.stringify({ rewrites: [], additions: [], requirements: [] });
+      if (opts.tag === 'quick-model') return JSON.stringify(model);
       if (opts.tag === 'code-hta') {
         const rows = JSON.parse(prompt.split('Questions: ')[1].split('\n')[0]);
         return JSON.stringify({ codings: rows.map(r => ({ id: r.id, cluster: 'facts', moment: 'Now', moneyMoving: false,
