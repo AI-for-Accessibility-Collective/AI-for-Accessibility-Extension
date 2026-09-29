@@ -65,6 +65,11 @@ jobs:
       - name: Verifier tests
         run: node personalized-extension/test/verifier-test.mjs
 
+      # The checks on the browser agent's work. Offline: no model calls, no
+      # browser. The live audits (npm run audit:*) need a Gemini key.
+      - name: Agent check tests
+        run: npm --prefix personalized-extension test
+
   # The vendored tarballs must be exactly what `npm pack` produces at the
   # commit vendor/PIN.json records. Compares extracted trees, not tarball
   # bytes, so gzip and npm-version differences cannot cause false failures.
