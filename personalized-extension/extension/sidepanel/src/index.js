@@ -393,14 +393,18 @@ if (vaRoot) {
     onControl: (c) => {
       if (c.action === 'start') {
         // Checking only. Deliberately does NOT start the agent: someone can
-        // want their own shopping checked without handing it over, and a demo
-        // of the checking should not depend on an agent behaving.
+        // want their own shopping checked without handing it over.
         chrome.runtime.sendMessage({ type: 'validationStart', contract: c.said });
+        return;
+      }
+      if (c.action === 'retry') {
+        chrome.runtime.sendMessage({ type: 'bhAgentStart', task: c.task, tabId: c.tabId });
         return;
       }
       if (c.action === 'answer') {
         chrome.runtime.sendMessage({ type: 'validationAnswer',
-                                     widget: c.widget, response: c.response });
+          widget: c.widget, response: c.response, kind: c.kind, choiceId: c.choiceId,
+          taskId: c.taskId, decisionKey: c.decisionKey });
         return;
       }
       if (c.action === 'on-request') {
@@ -411,6 +415,36 @@ if (vaRoot) {
       }
       // Everything else is a control delegation removed -- re-sort, open
       // another, change the size. These go to the agent as an instruction.
+      if (c.action === 'ask') {
+        // Straight to the layer. Deliberately not validationControl, which
+        // ends at steerAgent — asking a question must not change what the
+        // agent does next, which is the whole point of the mode.
+        chrome.runtime.sendMessage({ type: 'validationAsk', question: c.question });
+        return;
+      }
+      if (c.action === 'ack') {
+        chrome.runtime.sendMessage({ type: 'validationAck', key: c.key });
+        return;
+      }
+      if (c.action === 'why') {
+        // A lookup, like asking about the page: it reads the record and
+        // changes nothing. Going back to a decision re-opens it; it does not
+        // undo anything that already happened on the site.
+        chrome.runtime.sendMessage({ type: 'validationWhy', nodeId: c.nodeId });
+        return;
+      }
+      if (c.action === 'edit-ask' || c.action === 'fill-gap') {
+        // These fell through to validationControl, whose say-map knows
+        // neither - so "Change something" and every gap "Answer" button
+        // did nothing at all.
+        const field = c.field || window.prompt(
+          'Which part? (buying, must have, size, budget, how many, needed by)');
+        if (!field) return;
+        const value = window.prompt(field === 'request' ? 'Update your request:' : `New value for ${field}:`, c.value || '');
+        if (value == null || !value.trim()) return;
+        chrome.runtime.sendMessage({ type: 'validationEdit', field, value: value.trim() });
+        return;
+      }
       chrome.runtime.sendMessage({ type: 'validationControl', control: c });
     },
   });

@@ -7,7 +7,15 @@
   },
   "scripts": {
     "build": "node build.js",
-    "watch": "node build.js --watch"
+    "watch": "node build.js --watch",
+    "test:browser": "node test/extension-integration-test.mjs && node test/background-input-test.mjs",
+    "test:live": "node test/live-runtime-test.mjs --live",
+    "audit:journey": "node test/audit-live-journey.mjs --live",
+    "audit:agent": "node test/audit-live-agent.mjs --live",
+    "audit:actions": "node test/audit-live-actions.mjs --live",
+    "audit:attention": "node test/audit-live-attention.mjs --live",
+    "audit:workflows": "node test/audit-live-workflows.mjs --live",
+    "test": "node test/run-verification-tests.mjs"
   },
   "devDependencies": {
     "@ai4a11y/toolkit": "file:../vendor/ai4a11y-toolkit.tgz",
@@ -15,6 +23,7 @@
     "aria-query": "^5.3.2",
     "chokidar": "^3.6.0",
     "esbuild": "^0.28.0",
+    "jsdom": "^29.1.1",
     "puppeteer": "^24.42.0"
   },
   "dependencies": {

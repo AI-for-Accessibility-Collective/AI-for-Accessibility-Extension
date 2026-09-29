@@ -157,6 +157,9 @@
       if (name) attrs.name = truncate(name.trim(), 80);
       const v = el.value;
       if (v) attrs.value = truncate(String(v).trim(), 80);
+      if (t === 'checkbox' || t === 'radio') {
+        attrs.checked = el.indeterminate ? 'mixed' : String(el.checked);
+      }
       // Compound-component info for range / number sliders. Mirrors
       // browser_use's compound_components: surfaces min/max/step so the
       // LLM knows the valid value range without having to introspect.
@@ -173,6 +176,8 @@
       if (name) attrs.name = truncate(name.trim(), 80);
       const ph = el.getAttribute('placeholder');
       if (ph) attrs.placeholder = truncate(ph.trim(), 80);
+      attrs.value = truncate(String(el.value || ''), 160);
+      if (tag === 'SELECT') attrs.selected = Array.from(el.selectedOptions || [], o => truncate(o.textContent.trim(), 80)).join(', ');
     } else if (tag === 'METER' || tag === 'PROGRESS') {
       const min = el.getAttribute('min');
       const max = el.getAttribute('max');
@@ -198,7 +203,7 @@
     }
     // ARIA state for toggleable widgets
     const checked = el.getAttribute('aria-checked');
-    if (checked) attrs.checked = checked;
+    if (checked && attrs.checked === undefined) attrs.checked = checked;
     const expanded = el.getAttribute('aria-expanded');
     if (expanded) attrs.expanded = expanded;
     const pressed = el.getAttribute('aria-pressed');

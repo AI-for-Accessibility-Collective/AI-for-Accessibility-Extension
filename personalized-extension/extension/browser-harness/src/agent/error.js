@@ -12,11 +12,15 @@ import { BH_AGENT_ACTION_TIMEOUT_MS } from './constants.js';
 export async function _bhWithActionTimeout(label, ms, fn) {
   if (!Number.isFinite(ms) || ms <= 0) return fn();
   let timer;
+  const controller = new AbortController();
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`action ${label} timed out after ${ms}ms`)), ms);
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`action ${label} timed out after ${ms}ms`));
+    }, ms);
   });
   try {
-    return await Promise.race([fn(), timeout]);
+    return await Promise.race([fn(controller.signal), timeout]);
   } finally {
     clearTimeout(timer);
   }

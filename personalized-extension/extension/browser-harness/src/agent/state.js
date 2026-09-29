@@ -37,16 +37,67 @@ export function getGeminiCaller() { return _bhGeminiCall; }
 
 // Run-lifecycle flags + tab tracking.
 export let _bhAgentStop = false;
-export function setStop(v) { _bhAgentStop = !!v; }
+// Why the run was stopped, in the person's terms.
+//
+// Without it every stop is recorded as "Stopped by user", including the ones
+// nobody asked for. The case that made this necessary: a hold nobody answered
+// used to burn the remaining steps and end as "reached max steps", so the
+// record named the symptom and not the cause.
+export let _bhAgentStopReason = null;
+export function setStop(v, reason = null) {
+  _bhAgentStop = !!v;
+  _bhAgentStopReason = v ? (reason || null) : null;
+}
 export function shouldStop() { return _bhAgentStop; }
+export function stopReason() { return _bhAgentStopReason; }
 
 export let _bhAgentRunning = false;
 export function setRunning(v) { _bhAgentRunning = !!v; }
 export function isRunning() { return _bhAgentRunning; }
+let instructionRevision = 0;
+export function invalidateActions() { instructionRevision += 1; }
+export function getInstructionRevision() { return instructionRevision; }
+
+// Held, not ended. A stop tears the run down and cannot be taken back; a pause
+// is meant to be let go of, so it is a separate flag read at the same place.
+//
+// Read once per iteration at the loop top, which is the one point where nothing
+// is in flight: no enumerate, no open model call, no action running. Pausing
+// there needs no way to cancel anything, which is why it is this and not an
+// AbortSignal threaded through every action.
+export let _bhAgentPaused = false;
+export let _bhAgentPauseInfo = null;
+export function setPause(v, info = null) {
+  _bhAgentPaused = !!v;
+  _bhAgentPauseInfo = v ? info : null;
+}
+export function isPaused() { return _bhAgentPaused; }
+export function pauseInfo() { return _bhAgentPauseInfo; }
+
+// Set by resume({rePerceive: true}), consumed once at the top of the next
+// iteration. What it throws away is the state that would otherwise carry a
+// decision made against the page as it was before the person started reading.
+export let _bhAgentRePerceive = false;
+export function setRePerceive(v) { _bhAgentRePerceive = !!v; }
+export function takeRePerceive() {
+  const v = _bhAgentRePerceive;
+  _bhAgentRePerceive = false;
+  return v;
+}
+
+// Which step the loop is on, 1-based. The executor reads it so the gate call
+// can say where in the run an action happened, which is what keys the trace.
+export let _bhAgentStep = 0;
+export function setStep(n) { _bhAgentStep = n; }
+export function getStep() { return _bhAgentStep; }
 
 export let _bhAgentTabId = null;
 export function setTabId(id) { _bhAgentTabId = id; }
 export function getTabId() { return _bhAgentTabId; }
+
+let _bhAgentTaskId = null;
+export function setTaskId(id) { _bhAgentTaskId = id || null; }
+export function getTaskId() { return _bhAgentTaskId; }
 
 export const _bhAgentOwnedTabs = new Set();
 export let _bhAgentGroupId = null;
@@ -149,7 +200,13 @@ export async function _bhAgentTabsContext() {
 // Reset all per-run state. Called from run.js's finally block.
 export function resetRunState() {
   _bhAgentRunning = false;
+  _bhAgentStopReason = null;
+  _bhAgentPaused = false;
+  _bhAgentPauseInfo = null;
+  _bhAgentRePerceive = false;
+  _bhAgentStep = 0;
   _bhAgentTabId = null;
+  _bhAgentTaskId = null;
   _bhAgentOwnedTabs.clear();
   _bhAgentGroupId = null;
   _bhAgentSwallow.clear();

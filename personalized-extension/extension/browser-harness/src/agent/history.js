@@ -86,7 +86,7 @@ function _bhAgentRenderHistoryEntry(h, idx) {
     let blob;
     try { blob = JSON.stringify(h.extracted); }
     catch { blob = String(h.extracted); }
-    lines.push(`  result: ${_bhAgentTruncate(blob, BH_AGENT_EXTRACTED_INLINE_MAX)}`);
+    lines.push(`  result: ${_bhAgentTruncate(blob, h.action === 'read' ? 14000 : BH_AGENT_EXTRACTED_INLINE_MAX)}`);
   }
   if (h.error) lines.push(`  error: ${_bhAgentTruncate(h.error, 400)}`);
   return lines.join('\n');

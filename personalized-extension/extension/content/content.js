@@ -1064,8 +1064,8 @@ async function wireAgentWatch() {
 function wireAgentWatchHandlers() {
   AgentWatch.onControl = (control) =>
     chrome.runtime.sendMessage({ type: 'validationControl', control }).catch(() => {});
-  AgentWatch.onAnswer = (widget, response) =>
-    chrome.runtime.sendMessage({ type: 'validationAnswer', widget, response }).catch(() => {});
+  AgentWatch.onAnswer = (widget, response, decision = {}) =>
+    chrome.runtime.sendMessage({ ...decision, type: 'validationAnswer', widget, response }).catch(() => {});
   // The upward arrow: a correction made in one task becomes a standing rule.
   // Say it, and say back what happened to it. A reply of {queued: 0} means no
   // agent is running, which the person needs to hear — otherwise typing into
@@ -1093,3 +1093,13 @@ function wireAgentWatchHandlers() {
 
 init().then(wireAgentWatch);
 
+// A task can start while this page is already open - Validation.start flips
+// sync agentWatch, and without this listener the overlay only ever appeared
+// after a reload or a navigation.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !changes.agentWatch) return;
+  if (changes.agentWatch.newValue && !AgentWatch.enabled) {
+    AgentWatch.enable({});
+    wireAgentWatch();
+  }
+});

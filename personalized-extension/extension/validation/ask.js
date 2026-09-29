@@ -160,7 +160,37 @@ const NEEDS = {
  *
  * @returns {Array<{field: string, ask: string, unchecked: string[]}>}
  */
-export function gaps(c) {
+/**
+ * What the person did not say, that the layer needs in order to check.
+ *
+ * `about` is what is known about the task, from the generated model. These four
+ * fields are a shopping shape — a size, a budget, a deadline — and asking them
+ * about a task that buys nothing is worse than asking nothing: a recorded
+ * Wikipedia lookup opened by asking "What size do you need?" and "What's the
+ * most you want to spend?" about the Eiffel Tower.
+ *
+ * Suppressed only when the model positively says this task commits nothing.
+ * With no model yet, or no model at all, the questions still get asked, because
+ * "not known" and "known not to apply" are different and only the second is a
+ * reason to stay quiet.
+ */
+export function gaps(c, about = {}) {
+  // A selected HTA asks the task's own questions. Shopping form blanks do not
+  // describe hotels, appointments, writing or the other catalog tasks.
+  if (about.hasTaskModel) return [];
+  if (about.commits === false) return [];
+  // Positive evidence, not merely the absence of a verdict. Suppressing only on
+  // a definite "this task commits nothing" left the questions showing for the
+  // whole early part of every run, because the coding stage that decides it
+  // runs last. On a recorded Wikipedia run the layer read its own panel off the
+  // page and reported it: "the companion panel tracks shopping-related criteria
+  // like budget and size instead of research criteria".
+  //
+  // A budget or a size in the contract means the sentence was purchase-shaped,
+  // since neither is parsed from anything else. With no such field and nothing
+  // known about the task yet, asking a research task for its budget is worse
+  // than asking nothing.
+  if (about.commits !== true && !c.budget && !c.size && !(c.quantity > 1)) return [];
   const out = [];
   if (!c.size) {
     out.push({ field: 'size', ask: 'What size do you need?', unchecked: NEEDS.size });

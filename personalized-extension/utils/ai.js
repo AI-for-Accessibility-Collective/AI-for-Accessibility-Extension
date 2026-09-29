@@ -302,6 +302,8 @@ export function createChromeAIProvider() {
         region.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
         document.body.appendChild(region);
       }
+      region.setAttribute('data-ai4a11y-ui', 'true');
+      region.setAttribute('data-bh-ignore', 'true');
       region.textContent = message;
     }
   };

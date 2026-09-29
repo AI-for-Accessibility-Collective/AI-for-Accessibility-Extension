@@ -2,20 +2,30 @@
 // + execute (possibly multi-action) + post-step health check.
 
 import {
-  BH_AGENT_ACTION_TIMEOUT_MS,
   BH_AGENT_KEY,
 } from './constants.js';
 import {
   _bhAgentOwnedTabs,
   setTabId,
   getTabId,
+  setTaskId,
   setGroupId,
   getGroupId,
   setCreatingTab,
   setStop,
   shouldStop,
+  stopReason,
+  setPause,
+  isPaused,
+  pauseInfo,
+  setRePerceive,
+  takeRePerceive,
+  setStep,
+  getStep,
   setRunning,
   isRunning,
+  invalidateActions,
+  getInstructionRevision,
   setSystemPrompt,
   setLoadedSkills,
   setNavSurface,
@@ -39,7 +49,7 @@ import {
   _bhAgentCurrentUrlSafe,
   _BH_AGENT_TERMINATES_SEQUENCE,
 } from './action-extract.js';
-import { _bhWithActionTimeout, _bhClassifyAgentError } from './error.js';
+import { _bhClassifyAgentError } from './error.js';
 import { _bhAgentAsk } from './ask.js';
 import { _bhAgentExec } from './exec.js';
 import { _bhAgentCompactHistoryIfNeeded } from './history.js';
@@ -104,17 +114,82 @@ const _bhPending = [];
  *
  * @param {string} instruction in their terms — "open the runner-up instead"
  */
-export function bhAgentInterject(instruction) {
+export function bhAgentInterject(instruction, { source = 'user' } = {}) {
   const t = String(instruction || '').trim();
   if (!t) return { queued: 0 };
-  _bhPending.push(t);
+  _bhPending.push({ text: t, source: source === 'verification' ? 'verification' : 'user' });
+  invalidateActions();
   return { queued: _bhPending.length };
 }
 
+/** How often a paused loop looks to see whether it may go again. */
+export const BH_AGENT_PAUSE_POLL_MS = 300;
+
+/**
+ * Hold the agent still, without ending its run.
+ *
+ * The flag is read at the top of an iteration, so what is paused is the step
+ * that has not started yet. An action already in flight finishes — see API.md
+ * section 2 on why mid-step cancellation is last and probably never: the gate
+ * already stops anything committing, so a click that is halfway through is not
+ * worth making every action cancellable for.
+ *
+ * @param {{reason?: string, byNode?: string}} opts
+ */
+export function bhAgentPause(opts = {}) {
+  if (!isRunning()) return { paused: false, why: 'no run in progress' };
+  setPause(true, { reason: opts.reason || null,
+                   byNode: opts.byNode ?? null, at: Date.now() });
+  return { paused: true, atStep: getStep() };
+}
+
+/**
+ * Let it go again.
+ *
+ * `rePerceive` is on unless it is explicitly switched off, because the page can
+ * have changed while the person was reading it and that is exactly where a
+ * stale action would land.
+ */
+export function bhAgentResume(opts = {}) {
+  // Resuming nothing must not arm anything. Without this the flag outlived the
+  // run that never read it and the NEXT run opened by announcing a pause that
+  // had happened to somebody else.
+  if (!isRunning()) return { resumed: false, why: 'no run in progress' };
+  const was = isPaused();
+  const rePerceive = opts.rePerceive !== false;
+  if (rePerceive) setRePerceive(true);
+  setPause(false);
+  return { resumed: was, rePerceive };
+}
+
+export function bhAgentIsPaused() { return isPaused(); }
+export function bhAgentPauseState() {
+  return { paused: isPaused(), atStep: getStep(), info: pauseInfo() };
+}
+
 export async function bhAgentRun(task, opts = {}) {
+  let bounces = 0;
+  let completionRetries = 0;
   if (isRunning()) throw new Error('agent already running');
+  // A run the person started with the checks switched off carries
+  // verification: false and needs no prepared task.
+  if (opts.verification !== false && (globalThis.ValidationController || opts.taskId)
+    && !globalThis.Validation?.isTaskReady?.(opts.taskId)) {
+    throw new Error('Prepare this task through the verification layer before running it.');
+  }
   setRunning(true);
+  setTaskId(opts.taskId);
   setStop(false);
+  // Drop only the previous run's messages. New corrections received during
+  // asynchronous startup must reach this run's first model call.
+  _bhPending.length = 0;
+  try {
+  // A new run starts unheld, whatever the last one left behind. resetRunState
+  // already does this at the end of a run, but a run that threw on its way in
+  // never reaches it.
+  setPause(false);
+  setRePerceive(false);
+  setStep(0);
   setLoadedSkills([]);
   setNavSurface(null);
   setCurrentMemory('');
@@ -124,6 +199,10 @@ export async function bhAgentRun(task, opts = {}) {
   // start of the run -- the names don't change mid-run, so re-listing every
   // turn just spends prompt budget for no information gain.
   let systemPrompt = await _bhBuildSystemPrompt();
+  if (opts.instructions?.length) systemPrompt += `\nStanding instructions from the person:\n${opts.instructions.join('\n')}`;
+  if (globalThis.Validation?.isActionReviewEnabled?.(opts.taskId)) {
+    systemPrompt += '\nThe verification layer reviews every proposed browser action before execution. When the next requested action needs user approval, propose its exact click_index target. The executor will hold it and show the approval widget; proposing it does not execute it. Do not use done to ask a question or request approval. Use done only after the requested outcome is verified. A prohibition on the action still applies.';
+  }
   setSystemPrompt(systemPrompt);
 
   const H = globalThis.BrowserHarness;
@@ -221,6 +300,7 @@ export async function bhAgentRun(task, opts = {}) {
 
   await _bhAgentWrite({
     task,
+    taskId: opts.taskId || globalThis.Validation?.taskId?.() || null,
     tabId,
     maxSteps,
     status: 'running',
@@ -231,7 +311,6 @@ export async function bhAgentRun(task, opts = {}) {
     log: initialLog,
   });
 
-  try {
     await H.attach(tabId);
     const history = [];
     // Carries between iterations: when the previous turn produced a parse
@@ -239,20 +318,73 @@ export async function bhAgentRun(task, opts = {}) {
     // the error so the model can correct itself instead of aborting the run.
     let pendingError = null;
     let pendingRaw = null;
+    // Anything the person said since the last action, as their own turn.
+    // Called twice per iteration: once before the pause check and once after
+    // it. The second call is not tidiness — being held is exactly when someone
+    // says something, and without it the news arrived one action too late.
+    const drainPending = async () => {
+      while (_bhPending.length) {
+        const { text: said, source } = _bhPending.shift();
+        const automatic = source === 'verification';
+        history.push({ role: 'user', content: automatic
+          ? `[Verification guidance] ${said}\nThis is an intermediate step within the current task, not a new user request. After checking its result, continue the remaining task. The verification layer checks the page automatically; do not ask the person to confirm a value they already specified. All requested choices and final approvals still apply.`
+          : `[You interrupted] ${said}` });
+        await _bhAgentLog({ kind: 'info', text: `${automatic ? 'Verification' : 'You'}: ${said}` });
+      }
+    };
     for (let step = 0; step < maxSteps; step++) {
-        // Anything the person said since the last action goes in first, as
-        // their own turn. Ahead of the stop check, because "stop" is one of
-        // the things they may have just said.
-        while (_bhPending.length) {
-          const said = _bhPending.shift();
-          history.push({ role: 'user', content: `[You interrupted] ${said}` });
-          await _bhAgentLog({ kind: 'info', text: `You: ${said}` });
+      setStep(step + 1);
+      // Ahead of the stop check, because "stop" is one of the things they may
+      // have just said.
+      await drainPending();
+      // Held. This is the point in an iteration where nothing is in flight —
+      // nothing enumerated yet, no model call open, no action running — so the
+      // loop can simply not go on, and no cancellation machinery is needed.
+      // Waiting here also costs no steps: the step it is standing at has not
+      // begun, so a long pause does not eat the run's budget.
+      if (isPaused()) {
+        const info = pauseInfo() || {};
+        await _bhAgentPatch({ status: 'paused' });
+        await _bhAgentLog({ kind: 'info', step: step + 1,
+          text: `Paused${info.reason ? `: ${info.reason}` : ''}${info.byNode ? ` (${info.byNode})` : ''}.` });
+        while (isPaused() && !shouldStop()) {
+          await new Promise((r) => setTimeout(r, BH_AGENT_PAUSE_POLL_MS));
         }
+        if (!shouldStop()) {
+          await _bhAgentPatch({ status: 'running' });
+          await _bhAgentLog({ kind: 'info', step: step + 1, text: 'Resumed.' });
+        }
+        // What was said while it was held goes in before it acts. Handing back
+        // states what changed while the agent was out, and that account is
+        // worth nothing if it lands after the next action.
+        await drainPending();
+      }
+      // What resume({rePerceive}) actually throws away.
+      //
+      // The enumerate and the screenshot below happen every iteration anyway,
+      // so the model always sees the page as it is now. What would otherwise
+      // survive the pause is a decision made against the page as it WAS: a
+      // failed action staged for retry, and the model's own account of what it
+      // was looking at. Both go.
+      if (takeRePerceive()) {
+        pendingError = null;
+        pendingRaw = null;
+        history.push({ role: 'user', content:
+          '[The page was read again after a pause] What follows is a fresh look at the page. '
+          + 'It may have changed while you were held. Work from the element list below, '
+          + 'not from what you saw before the pause.' });
+        await _bhAgentLog({ kind: 'info', step: step + 1,
+          text: 'Read the page again before acting.' });
+      }
       if (shouldStop()) {
-        await _bhAgentPatch({ status: 'stopped', endedAt: Date.now() });
-        await _bhAgentLog({ kind: 'info', text: 'Stopped by user' });
-        _bhAgentNotify('stopped', task, 'Stopped by user');
-        return { stopped: true };
+        // The reason is the record. A run the layer ended because nobody
+        // answered it must not be filed under the same words as a run the
+        // person ended on purpose.
+        const why = stopReason() || 'Stopped by user';
+        await _bhAgentPatch({ status: 'stopped', endedAt: Date.now(), summary: why });
+        await _bhAgentLog({ kind: 'info', text: why });
+        _bhAgentNotify('stopped', task, why);
+        return { stopped: true, reason: why };
       }
       // Always read the live current tab -- open_tab/switch_tab/close_tab
       // may have moved focus during the previous iteration. If every owned
@@ -272,6 +404,7 @@ export async function bhAgentRun(task, opts = {}) {
       // unresponsive. Cleared at every loop-iteration exit below (catch
       // blocks before continue, and after the success-path health check).
       H.setAgentBusy && H.setAgentBusy(true);
+      const actionRevision = getInstructionRevision();
 
       // Page-stability gate. Wait up to 3s for document.readyState to
       // reach 'complete' before enumerating. Catches the common case
@@ -285,6 +418,14 @@ export async function bhAgentRun(task, opts = {}) {
       if (H.waitForLoad) {
         try { await H.waitForLoad(currentTab, { timeoutMs: 3000 }); } catch (_) {}
       }
+      // Planning reads the page but does not change it. Let the independent
+      // verifier run alongside planning, then join it before executing any
+      // proposal. The executor still checks fresh evidence and exact targets.
+      const overlapVerification = globalThis.Validation?.isActionReviewEnabled?.(opts.taskId) === true;
+      const verification = overlapVerification
+        ? Promise.resolve().then(() => globalThis.Validation.observe(currentTab, { onlyChanged: true }))
+          .catch(() => {}) // beforeAction must retry or stop; a failed read grants no permission
+        : null;
       // Enumerate interactive elements + capture screenshot in parallel.
       // Enumerate caches the live element refs at window.__bhInteractive
       // so a follow-up click_index resolves index → exact DOM center.
@@ -316,7 +457,11 @@ export async function bhAgentRun(task, opts = {}) {
         });
       }
       const items = (enumResult && Array.isArray(enumResult.items)) ? enumResult.items : [];
-      const rawScreenshot = typeof shot === 'string' ? shot : shot.data;
+      // `shot` is null when the capture failed - the catch above already
+      // logged "Screenshot skipped this step" and returned null, and reading
+      // .data off it killed a whole run four steps in. A step without a
+      // screenshot proceeds on the element list alone.
+      const rawScreenshot = typeof shot === 'string' ? shot : (shot ? shot.data : null);
       const imgScale = (shot && typeof shot === 'object' && shot.scale) || 1;
       const imgWidth = (shot && typeof shot === 'object' && shot.width) || 0;
       const imgHeight = (shot && typeof shot === 'object' && shot.height) || 0;
@@ -361,6 +506,11 @@ export async function bhAgentRun(task, opts = {}) {
         });
         H.setAgentBusy && H.setAgentBusy(false);
         continue;
+      } finally {
+        // A question, correction, or request change found during planning can
+        // invalidate its response. Keep the original actionRevision so the
+        // executor discards that response instead of relabelling it current.
+        await verification;
       }
 
       // Carry the latest memory forward so the next prompt's "Current
@@ -407,16 +557,17 @@ export async function bhAgentRun(task, opts = {}) {
         });
 
         try {
-          result = await _bhWithActionTimeout(
-            sub.action || 'unknown',
-            BH_AGENT_ACTION_TIMEOUT_MS,
-            () => _bhAgentExec(getTabId(), sub, task),
-          );
+          result = await _bhAgentExec(getTabId(), sub, task, { revision: actionRevision });
+          if (result?.replan) {
+            pendingError = null; pendingRaw = null; aborted = true;
+            if (!isPaused()) setRePerceive(true);
+            break;
+          }
           if (result && 'extracted' in result) turn.extracted = result.extracted;
         } catch (execErr) {
           const { kind, msg } = _bhClassifyAgentError(execErr);
           turn.error = msg;
-          if (kind === 'terminal') {
+          if (kind === 'terminal' || kind === 'timeout') {
             terminalError = msg;
           } else {
             pendingError = kind === 'timeout' ? `[timeout] ${msg}` : `[transient] ${msg}`;
@@ -480,6 +631,15 @@ export async function bhAgentRun(task, opts = {}) {
         H.setAgentBusy && H.setAgentBusy(false);
         continue;
       }
+      if (result?.stopped) {
+        await _bhAgentPatch({ status: 'stopped', endedAt: Date.now(), summary: result.summary });
+        H.setAgentBusy && H.setAgentBusy(false);
+        return { stopped: true, summary: result.summary };
+      }
+      if (!overlapVerification) {
+        try { await globalThis.Validation?.observe?.(getTabId(), { onlyChanged: true }); }
+        catch { /* beforeAction checks again before the next mutation */ }
+      }
       // Use the LAST sub-action that ran for the post-batch logic below
       // (it's the one whose result determines done/keepGoing). The meta
       // 'action' is unused at this point but kept for log fidelity.
@@ -535,6 +695,24 @@ export async function bhAgentRun(task, opts = {}) {
       pendingRaw = null;
       if (!result.keepGoing) {
         const summary = result.summary || action.summary || 'task complete';
+        let completion;
+        try { completion = await globalThis.Validation?.verifyCompletion?.(getTabId(), summary); }
+        catch { completion = { complete: false, reason: 'I could not verify the task outcome.' }; }
+        if (shouldStop() || isPaused() || actionRevision !== getInstructionRevision()) continue;
+        if (completion?.complete === false) {
+          const why = completion.reason || 'The task outcome is not verified.';
+          if (globalThis.Validation?.isActionReviewEnabled?.(opts.taskId) && completionRetries++ < 2) {
+            const missing = (completion.checks || []).filter(c=>c.status!=='complete')
+              .map(c=>({goal:c.goal,reason:c.reason}));
+            await _bhAgentLog({kind:'info',step:step+1,text:'The result is not yet verified. Continuing the requested task.'});
+            bhAgentInterject(`Completion was not confirmed: ${why}. Remaining checks: ${JSON.stringify(missing)}. Continue the existing request. If the next requested action needs approval, propose its exact browser target; the executor will ask before executing it. Do not use done as a question or approval request.`,{source:'verification'});
+            continue;
+          }
+          await _bhAgentPatch({ status: 'stopped', endedAt: Date.now(), summary: why, completion });
+          await _bhAgentLog({ kind: 'info', text: why });
+          _bhAgentNotify('stopped', task, why);
+          return { stopped: true, summary: why, completion };
+        }
         // Declaring done does not end a run the validation layer is holding.
         // The recorded escape: an unanswered hold, and the model exits with
         // "It says it has finished" at 1 of 6 steps - done as a way around
@@ -542,9 +720,17 @@ export async function bhAgentRun(task, opts = {}) {
         // away from an unanswered hold may not.
         try {
           const V = globalThis.Validation;
-          if (V?.isRunning?.()) {
+          if (V && await (V.ensureRunning?.() ?? V.isRunning?.())) {
             const g = await V.allow('finish the task');
             if (g && g.allowed === false) {
+              bounces = (bounces || 0) + 1;
+              if (bounces > 2) {
+                const paused = 'Paused, waiting on you. The task is not finished.';
+                await _bhAgentPatch({ status: 'stopped', endedAt: Date.now(), summary: paused });
+                await _bhAgentLog({ kind: 'info', text: paused });
+                _bhAgentNotify('stopped', task, paused);
+                return { summary: paused };
+              }
               await _bhAgentLog({ kind: 'info', step: step + 1,
                 text: `Tried to finish while the person is still being waited on; continuing. ${g.say || ''}` });
               bhAgentInterject(`You are not done. ${g.say || 'Something is waiting on the person.'} `
@@ -552,7 +738,16 @@ export async function bhAgentRun(task, opts = {}) {
               continue;
             }
           }
-        } catch { /* the guard must never break a legitimate finish */ }
+        } catch {
+          const summary = 'I could not check whether the task can finish.';
+          await _bhAgentPatch({ status: 'stopped', endedAt: Date.now(), summary });
+          return { stopped: true, summary };
+        }
+        // The run ends spoken, not silent: the task outcome first, then the
+        // top kept findings the person never saw. The layer owns what gets
+        // said; a wrap-up that fails must never break a legitimate finish.
+        try { await globalThis.Validation?.wrapUp?.(summary); } catch { /* never fatal */ }
+        if (shouldStop() || isPaused() || actionRevision !== getInstructionRevision()) continue;
         await _bhAgentPatch({ status: 'done', endedAt: Date.now(), summary });
         await _bhAgentLog({ kind: 'done', text: summary });
         _bhAgentNotify('done', task, summary);
@@ -561,9 +756,13 @@ export async function bhAgentRun(task, opts = {}) {
       }
     }
     const summary = `reached max steps (${maxSteps})`;
-    await _bhAgentPatch({ status: 'done', endedAt: Date.now(), summary });
+    // A run that ran out of steps is still a run that ended, and the kept
+    // findings matter MORE here: nobody declared the task done, so the review
+    // is the only account of how far it got.
+    try { await globalThis.Validation?.wrapUp?.(summary); } catch { /* never fatal */ }
+    await _bhAgentPatch({ status: 'stopped', endedAt: Date.now(), summary });
     await _bhAgentLog({ kind: 'info', text: summary });
-    _bhAgentNotify('done', task, summary);
+    _bhAgentNotify('stopped', task, summary);
     _bhAgentObserveOutcome(task, summary, false);
     return { summary };
   } catch (e) {
@@ -613,7 +812,7 @@ function _bhAgentObserveOutcome(task, summary, success) {
   })().catch(() => {});
 }
 
-export function bhAgentStop() { setStop(true); }
+export function bhAgentStop(reason) { setStop(true, reason); }
 export function bhAgentIsRunning() { return isRunning(); }
 
 export async function bhAgentClear() {

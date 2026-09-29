@@ -17,24 +17,42 @@
 
 import { read } from '@ai4a11y/tools/validators/reader.js';
 import { checkPage } from './checks.js';
-import { decide, highest } from './policy.js';
+import { decide, highest, SURFACE_OF_LEVEL } from './policy.js';
 import { render } from './render.js';
+import { findingKey } from '@ai4a11y/tools/utils/verification-decisions.js';
 
 // What each phase needs read. Signals with no extractor are controls — actions
 // delegation removed — and are handed back rather than described.
 const READS = {
   Search: ['resultSet', 'resultCount', 'sponsoredCount', 'priceNow', 'priceTypical',
-           'firstOrganicIndex', 'activeFilters', 'sortOrder', 'badges'],
+           'firstOrganicIndex', 'activeFilters', 'sortOrder', 'badges',
+           'searchEcho', 'searchDepartment',
+           'tilePrices', 'tileRatings', 'tileRatingCounts', 'filterNames',
+           'sortOptions', 'tileHasPhoto'],
   'Check item': ['title', 'buyBoxPrice', 'rating', 'ratingCount', 'sizeOptions',
                  'selectedSize', 'stockLine', 'galleryCount', 'photoAltText',
-                 'deliveryDate', 'countdown', 'returnsBadge', 'specRows'],
-  'Add to cart': ['addConfirmation', 'cartCount', 'cartLines', 'cartLineSize'],
+                 'deliveryDate', 'countdown', 'returnsBadge', 'specRows',
+                 'variantPrices', 'couponLine',
+                 'colorSwatches', 'hiddenColorCount', 'galleryAlt',
+                 'reviewCount', 'reviewText', 'returnsPolicy', 'detailsTable'],
+  // buyBoxPrice again at the add: the recorded run's price moved from $12.93
+  // to $15.10 when the size was picked, and only a re-read at this step can
+  // catch that against what the run remembers.
+  'Add to cart': ['addConfirmation', 'cartCount', 'cartLines', 'cartLineSize',
+                  'buyBoxPrice', 'selectedSize', 'quantityPreset'],
   Checkout: ['shipAddress', 'deliveryOptions', 'selectedDelivery', 'formErrors'],
   'Review order': ['itemCount', 'itemsSubtotal', 'orderTotal', 'tax', 'arrivalDate',
                    'cardLabel', 'cardLastFour', 'orderLines'],
   Confirm: ['outcomeHeading', 'orderNumber', 'confirmationEmail', 'cancelControl',
-            'orderStatus'],
+            'orderStatus', 'adBlocks', 'orderTotal'],
 };
+
+// One fact, one key, however it is worded. Lowercased, non-alphanumerics
+// collapsed, capped - enough that "ERR_HTTP2_PROTOCOL_ERROR" and the same
+// error quoted with different surrounding words collide, and short enough
+// that two long quotes sharing a prefix do too rather than never.
+export const evidenceKey = (quote) => String(quote || '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60);
 
 // Plain names for the extractors, supplied with the rest of the analysis.
 // Empty means fall back to the internal name — ugly, but never wrong.
@@ -46,7 +64,13 @@ export function setExtractorNames(map) {
 }
 
 export function createRun(contract, opts = {}) {
-  const style = opts.style || 'balanced';
+  // Undefined rather than 'balanced' when nobody passed one. insistenceShift
+  // short-circuits on any truthy style and never reaches state.model, so a
+  // default here made the whole persona chain inert.
+  const style = opts.style || undefined;
+  // The person's AbilityModel, if the Librarian had one when the run began.
+  // policy.js reads it to shift insistence a notch either way.
+  const model = opts.model || null;
   const channels = { speech: opts.speech !== false, visual: opts.visual !== false };
 
   const seen = new Set();      // findings already raised, so they do not repeat
@@ -54,14 +78,184 @@ export function createRun(contract, opts = {}) {
   const gaps = [];             // extractors that could not read something
   const waiting = [];          // unresolved stops — the agent may not pass these
   const steps = [];            // the plan, with outcomes
+  let firstPrice = null;       // the first buy-box price this run saw, and where
+
+  // Level, rendering, and the run's bookkeeping for one page's findings.
+  //
+  // Shared by the two ways findings arrive: the extractors reading a page
+  // against the hand-written checks, and the reasoner answering the task
+  // model's questions off the same snapshot. Both have to land in the same
+  // `seen`, `said`, `waiting` and `steps`, or the gate holds on one kind and
+  // not the other and the plan shows half the run.
+  //
+  // `read` and `of` are what the step line says the page gave up: for the
+  // extractors that is facts read of facts wanted, and for the reasoner it is
+  // questions answered of questions asked.
+  function apply(findings, phase, read, of, signals = null) {
+    const rendered = [];
+    // The nodes this page is stopping at. A stop is one interruption for the
+    // whole node (decision 3), so a question on a stopping node rides that
+    // pause for the cost of one more sentence, not a second interruption -
+    // the compound-alert rule. Charged the full pause cost, the ninth
+    // question on a pausing node was wrongly demoted to the log.
+    const pausingNodes = new Set(findings
+      .filter((f) => f.contradicts === true || f.moneyMoving === true)
+      .map((f) => f.node).filter((n) => n != null));
+    for (const f of findings) {
+      f.joiningPause = f.node != null && pausingNodes.has(f.node);
+      // `signals` are the page's own danger signs, raising P(e) for
+      // everything found on it. Nothing about earlier in the run enters here:
+      // the same finding on the same page routes the same way whether it is
+      // the first thing this run has said or the fortieth.
+      const d = decide(f, { seen, style, model, signals, evidenceKey,
+        routing: opts.routing, joiningPause: f.joiningPause === true });
+      let { level, why } = d;
+      // Route and scores travel on the finding, so they survive publish and a
+      // surface (or the completion review) can order by them.
+      if (d.route) { f.route = d.route; f.eu = d.eu; }
+      // `quiet` is set only by the reasoner, off the task model's own `moment`
+      // field: the model says which answers are wanted at the moment and which
+      // are wanted on demand, and only the first kind is announced. Nothing in
+      // the hand-written checks sets it, so this is inert on that path.
+      // Only ever silences an aside. `quiet` is a speech decision — the model
+      // said this answer is wanted on demand rather than at the moment — and a
+      // stop is a safety decision that policy.js already made. Flattening a
+      // stop here erased the contradiction lock, the moneyMoving escalation
+      // and the irreversible-phase fallback with one string comparison: 12 of
+      // the 62 money-moving gold questions carry a moment other than "Now",
+      // and every one of them was being silenced after being escalated.
+      // When the utility model routed this finding, the moment is already in
+      // the computation - D(r) is derived from it - so the flag is not applied
+      // a second time on top. An audited speak value has already decided
+      // the loudness outright, so the flag does not apply there either.
+      if (f.quiet && level === 'aside' && !d.route && !d.speak) {
+        level = 'ambient';
+        why = 'the task model asks for this on demand, not now';
+      }
+      // Which of the three surfaces this finding took, and why. The level
+      // decides it - a stop is the widget, an aside the checkpoint, an
+      // ambient the log - so this is the level in the design's own names,
+      // with decide()'s reason beside it, which until now was rendered and
+      // never published. `fired` is the audited trigger's verdict; only a
+      // finding with a speak value has one.
+      f.surface = SURFACE_OF_LEVEL[level] || null;
+      f.surfaceWhy = why;
+      f.fired = d.speak ? d.fired === true : null;
+      seen.add(`${f.widget}|${f.phase}`);
+      // Also keyed by the answer, so policy.js can tell a contradiction that
+      // CHANGED from one that is simply still true on the next page.
+      seen.add(`${f.widget}|${f.phase}|${f.say}`);
+      if (f.runtime) seen.add(findingKey(f));
+      // And keyed by the EVIDENCE. The reasoner words the same fact
+      // differently every time it re-notices it, so the widget-keyed guard
+      // never fires: one page-load failure was surfaced six times in one
+      // recorded run, two of them as stops, and the labeling pass found a
+      // third of everything not worth surfacing was this class. The same
+      // quote at the same phase is the same fact, however it is worded -
+      // spoken once, then kept.
+      if (f.from) seen.add(`q|${f.phase}|${evidenceKey(f.from)}`);
+      const r = render(f, level, channels);
+      rendered.push({ ...r, why });
+      if (level !== 'ambient') said.push({ phase, say: f.say, level, widget: f.widget });
+      // The one list in the blob with no cap, and every publish copies it, so
+      // a long run with fresh spoken findings on every page would grow it
+      // without bound.
+      if (said.length > 400) said.splice(0, said.length - 400);
+      // Driven by the level, not by whether a spoken rendering exists.
+      // render() returns spoken:null when channels.speech is false, so
+      // `r.spoken?.holds` was undefined, nothing ever entered `waiting`, and
+      // run.gate() returned allowed forever — a display preference silently
+      // removing the gate, with no error anywhere. Holding is not a speech
+      // concern. `validationStart` forwards arbitrary opts from any surface,
+      // and `speech:false` is the obvious shape of a visual-only profile.
+      // Not twice for the same question with the same answer. The dedupe key
+      // in policy.js is question + phase, so a destination that is still wrong
+      // on the next page is a NEW key and a second hold — a live three-page run
+      // ended holding on eleven things, six of which were three questions
+      // asked twice. The finding is legitimate; asking the person again is not.
+      // A contradiction is deduped by the QUESTION alone. The model words the
+      // same finding differently on each page — "the destination is San Diego
+      // International Airport (SAN) instead of LAX" then "the destination shown
+      // is San Diego International Airport instead of LAX" — so a say-based
+      // key misses, and a live three-page run held on eleven things of which
+      // six were three questions asked twice. The same question still
+      // contradicting is one thing to answer, however it is phrased. Anything
+      // else still dedupes on the exact wording.
+      const dupe = f.contradicts
+        ? waiting.some((w) => w.widget === f.widget)
+        : waiting.some((w) => w.widget === f.widget && w.ask === f.say);
+      if (level === 'stop' && !dupe) {
+        waiting.push({ widget: f.widget, ask: f.say, phase });
+      }
+    }
+
+    // One entry per page, updated — not one per read.
+    //
+    // A page is read more than once: the navigation trigger fires and an
+    // explicit observe follows. Pushing each time turned the plan into
+    // "Search / Search / Check item / Check item", which reads as though the
+    // agent went round in circles. The last read is the current truth.
+    const prior = steps.find((x) => x.phase === phase);
+    const entry = {
+      phase,
+      read,
+      of,
+      spoke: (prior?.spoke || 0) + rendered.filter((r) => r.level !== 'ambient').length,
+    };
+    if (prior) Object.assign(prior, entry);
+    else steps.push(entry);
+    return rendered;
+  }
 
   return {
     contract,
+
+    /**
+     * Findings that came from somewhere other than the extractors — today, the
+     * reasoner reading the page against a task model. Same bookkeeping, same
+     * gate, same plan; the difference is only in who produced them.
+     */
+    /**
+     * Put back the holds a torn-down worker was carrying.
+     *
+     * `waiting` is the only thing run.gate() reads, and a rebuilt run has
+     * none, so after any rehydrate the gate answered "allowed" for the rest of
+     * the task. The unread-findings check covers most of it, but not a stop
+     * the person acknowledged without answering: that clears unread and leaves
+     * the hold, so before a restart the gate was shut and after it was open,
+     * with nothing recording the change.
+     */
+    restoreWaiting(list) {
+      if (!Array.isArray(list)) return { restored: 0 };
+      for (const w of list) {
+        if (w && w.widget && !waiting.some((x) => x.widget === w.widget)) waiting.push(w);
+      }
+      return { restored: waiting.length };
+    },
+
+    observeFindings(findings, phase, counts = {}) {
+      const of = counts.of ?? findings.length;
+      const read = counts.read ?? findings.length;
+      return { findings: apply(findings, phase, read, of, counts.signals || null) };
+    },
 
     /** Read a page, check it, and decide how loudly to say each thing. */
     observe(snapshot, phase) {
       const want = READS[phase] || [];
       const facts = read(snapshot, want);
+
+      // The run remembers the first buy-box price it saw. The recorded run's
+      // own event: $12.93 on the first read, $15.10 once size 5 Big Kid was
+      // picked — no single page shows both numbers, so the check gets the
+      // remembered one handed to it as a fact with its provenance.
+      if (facts.buyBoxPrice && !facts.buyBoxPrice.absent) {
+        if (!firstPrice) {
+          firstPrice = { value: facts.buyBoxPrice.value, phase };
+        } else {
+          facts.priceFirstSeen = { value: firstPrice.value,
+                                   from: `remembered from ${firstPrice.phase}` };
+        }
+      }
 
       for (const [k, v] of Object.entries(facts)) {
         // Recorded once per extractor per phase. Re-reading a page does not
@@ -71,32 +265,10 @@ export function createRun(contract, opts = {}) {
         }
       }
 
-      const findings = checkPage(facts, phase, contract);
-      const rendered = [];
-      for (const f of findings) {
-        const { level, why } = decide(f, { seen, style });
-        seen.add(`${f.widget}|${f.phase}`);
-        const r = render(f, level, channels);
-        rendered.push({ ...r, why });
-        if (level !== 'ambient') said.push({ phase, say: f.say, level, widget: f.widget });
-        if (r.spoken?.holds) waiting.push({ widget: f.widget, ask: f.say, phase });
-      }
-
-      // One entry per page, updated — not one per read.
-      //
-      // A page is read more than once: the navigation trigger fires and an
-      // explicit observe follows. Pushing each time turned the plan into
-      // "Search / Search / Check item / Check item", which reads as though the
-      // agent went round in circles. The last read is the current truth.
-      const prior = steps.find((x) => x.phase === phase);
-      const entry = {
-        phase,
-        read: Object.values(facts).filter((f) => !f.absent).length,
-        of: Object.keys(facts).length,
-        spoke: (prior?.spoke || 0) + rendered.filter((r) => r.level !== 'ambient').length,
-      };
-      if (prior) Object.assign(prior, entry);
-      else steps.push(entry);
+      const rendered = apply(
+        checkPage(facts, phase, contract), phase,
+        Object.values(facts).filter((f) => !f.absent).length,
+        Object.keys(facts).length);
       return { facts, findings: rendered };
     },
 
@@ -113,9 +285,15 @@ export function createRun(contract, opts = {}) {
       return {
         allowed: false,
         waitingOn: waiting.map((w) => w.widget),
+        // Which one the say line is showing, so the surfaces can exclude it
+        // from their own list. The derived unread gate in session.js has
+        // always named this; this gate reached the panel without it whenever
+        // a stop entered `waiting` first, and the finding appeared twice.
+        leading: waiting[0].widget,
         say: waiting.length === 1
           ? `I'm waiting on one thing: ${waiting[0].ask}`
-          : `I'm waiting on ${waiting.length} things before I go further.`,
+          : `${waiting[0].ask || waiting[0].widget} `
+            + `And ${waiting.length - 1} more before I go further.`,
       };
     },
 
@@ -185,7 +363,12 @@ export function createRun(contract, opts = {}) {
         .reduce((n, s) => n + s.say.split(/\s+/).length, 0);
       return {
         steps: this.plan(), said: said.slice(),
-        spokenWords: words, waiting: waiting.length, unreadable: gaps.length,
+        // `waiting` stays a count because the surfaces read it as one; `holds`
+        // is the actual list, published so rehydrate() can hand it back to
+        // restoreWaiting - which takes an array, and was being fed the count,
+        // so holds never actually survived a worker restart.
+        spokenWords: words, waiting: waiting.length,
+        holds: waiting.map((w) => ({ ...w })), unreadable: gaps.length,
       };
     },
   };

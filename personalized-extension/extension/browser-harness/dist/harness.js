@@ -1,26 +1,18 @@
 (() => {
-  // extension/browser-harness/src/harness/state.js
-  var BH_ATTACHED = /* @__PURE__ */ new Set();
-  var BH_EVENTS = /* @__PURE__ */ new Map();
-  var BH_PENDING_DIALOGS = /* @__PURE__ */ new Map();
-  var BH_DIALOG_AUTO_TIMERS = /* @__PURE__ */ new Map();
-  var BH_NET_INFLIGHT = /* @__PURE__ */ new Map();
-  var BH_UNRESP_COUNT = /* @__PURE__ */ new Map();
-  var _BH_LAST_ITEMS = /* @__PURE__ */ new Map();
-  var BH_WATCHDOGS = [];
-  var BH_HEALTH = {
-    crashed: /* @__PURE__ */ new Set(),
-    // tabId set
-    unresponsive: /* @__PURE__ */ new Set(),
-    // tabId set
-    networkStall: /* @__PURE__ */ new Map()
-    // tabId -> oldest in-flight age (ms)
+  var __defProp = Object.defineProperty;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __esm = (fn, res) => function __init() {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
   };
-  var BH_HEALTH_ENABLED = true;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+
+  // extension/browser-harness/src/harness/state.js
   function bhHealthIsEnabled() {
     return BH_HEALTH_ENABLED;
   }
-  var BH_AUTO_DIALOG_ENABLED = true;
   function bhSetAutoDialog(enabled) {
     BH_AUTO_DIALOG_ENABLED = !!enabled;
     if (!enabled) {
@@ -31,7 +23,6 @@
   function bhAutoDialogIsEnabled() {
     return BH_AUTO_DIALOG_ENABLED;
   }
-  var BH_AGENT_BUSY = false;
   function bhSetAgentBusy(busy) {
     BH_AGENT_BUSY = !!busy;
   }
@@ -62,66 +53,95 @@
   function bhPendingDialog(tabId) {
     return BH_PENDING_DIALOGS.get(tabId) || null;
   }
+  var BH_ATTACHED, BH_EVENTS, BH_PENDING_DIALOGS, BH_DIALOG_AUTO_TIMERS, BH_NET_INFLIGHT, BH_UNRESP_COUNT, _BH_LAST_ITEMS, BH_WATCHDOGS, BH_HEALTH, BH_HEALTH_ENABLED, BH_AUTO_DIALOG_ENABLED, BH_AGENT_BUSY;
+  var init_state = __esm({
+    "extension/browser-harness/src/harness/state.js"() {
+      BH_ATTACHED = /* @__PURE__ */ new Set();
+      BH_EVENTS = /* @__PURE__ */ new Map();
+      BH_PENDING_DIALOGS = /* @__PURE__ */ new Map();
+      BH_DIALOG_AUTO_TIMERS = /* @__PURE__ */ new Map();
+      BH_NET_INFLIGHT = /* @__PURE__ */ new Map();
+      BH_UNRESP_COUNT = /* @__PURE__ */ new Map();
+      _BH_LAST_ITEMS = /* @__PURE__ */ new Map();
+      BH_WATCHDOGS = [];
+      BH_HEALTH = {
+        crashed: /* @__PURE__ */ new Set(),
+        // tabId set
+        unresponsive: /* @__PURE__ */ new Set(),
+        // tabId set
+        networkStall: /* @__PURE__ */ new Map()
+        // tabId -> oldest in-flight age (ms)
+      };
+      BH_HEALTH_ENABLED = true;
+      BH_AUTO_DIALOG_ENABLED = true;
+      BH_AGENT_BUSY = false;
+    }
+  });
 
   // extension/browser-harness/src/harness/constants.js
-  var BH_INTERNAL = ["chrome://", "chrome-untrusted://", "devtools://", "chrome-extension://", "about:"];
-  var BH_DEBUGGER_VERSION = "1.3";
-  var BH_CDP_TIMEOUT_MS = 6e4;
-  var BH_EVENT_LIMIT = 500;
-  var BH_AUTO_DISMISS_MS = 500;
-  var BH_NETWORK_STALL_MS = 3e4;
-  var BH_NET_MAX_AGE_MS = 12e4;
-  var BH_NET_TRACKED_TYPES = /* @__PURE__ */ new Set(["Document", "XHR", "Fetch"]);
-  var BH_UNRESPONSIVE_THRESHOLD = 3;
-  var BH_LIVENESS_PERIOD_MIN = 0.5;
-  var BH_PING_TIMEOUT_MS = 2e3;
-  var BH_REATTACH_RE = /detached|disconnected|target closed|no tab|not attached|debugger is not attached|session with given id not found/i;
-  var _BH_AX_INTERACTIVE_ROLES = /* @__PURE__ */ new Set([
-    "button",
-    "link",
-    "menuitem",
-    "option",
-    "radio",
-    "checkbox",
-    "tab",
-    "textbox",
-    "combobox",
-    "slider",
-    "spinbutton",
-    "listbox",
-    "search",
-    "searchbox",
-    "row",
-    "cell",
-    "gridcell"
-  ]);
-  var _BH_HIGHLIGHT_COLORS = [
-    "#e6194B",
-    "#3cb44b",
-    "#4363d8",
-    "#f58231",
-    "#911eb4",
-    "#42d4f4",
-    "#f032e6",
-    "#bfef45"
-  ];
-  var BH_KEYS = {
-    Enter: [13, "Enter", "\r"],
-    Tab: [9, "Tab", "	"],
-    Backspace: [8, "Backspace", ""],
-    Escape: [27, "Escape", ""],
-    Delete: [46, "Delete", ""],
-    " ": [32, "Space", " "],
-    ArrowLeft: [37, "ArrowLeft", ""],
-    ArrowUp: [38, "ArrowUp", ""],
-    ArrowRight: [39, "ArrowRight", ""],
-    ArrowDown: [40, "ArrowDown", ""],
-    Home: [36, "Home", ""],
-    End: [35, "End", ""],
-    PageUp: [33, "PageUp", ""],
-    PageDown: [34, "PageDown", ""]
-  };
-  var BH_KC = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, " ": 32, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };
+  var BH_INTERNAL, BH_DEBUGGER_VERSION, BH_CDP_TIMEOUT_MS, BH_EVENT_LIMIT, BH_AUTO_DISMISS_MS, BH_NETWORK_STALL_MS, BH_NET_MAX_AGE_MS, BH_NET_TRACKED_TYPES, BH_UNRESPONSIVE_THRESHOLD, BH_LIVENESS_PERIOD_MIN, BH_PING_TIMEOUT_MS, BH_REATTACH_RE, _BH_AX_INTERACTIVE_ROLES, _BH_HIGHLIGHT_COLORS, BH_KEYS, BH_KC;
+  var init_constants = __esm({
+    "extension/browser-harness/src/harness/constants.js"() {
+      BH_INTERNAL = ["chrome://", "chrome-untrusted://", "devtools://", "chrome-extension://", "about:"];
+      BH_DEBUGGER_VERSION = "1.3";
+      BH_CDP_TIMEOUT_MS = 6e4;
+      BH_EVENT_LIMIT = 500;
+      BH_AUTO_DISMISS_MS = 500;
+      BH_NETWORK_STALL_MS = 3e4;
+      BH_NET_MAX_AGE_MS = 12e4;
+      BH_NET_TRACKED_TYPES = /* @__PURE__ */ new Set(["Document", "XHR", "Fetch"]);
+      BH_UNRESPONSIVE_THRESHOLD = 3;
+      BH_LIVENESS_PERIOD_MIN = 0.5;
+      BH_PING_TIMEOUT_MS = 2e3;
+      BH_REATTACH_RE = /detached|disconnected|target closed|no tab|not attached|debugger is not attached|session with given id not found/i;
+      _BH_AX_INTERACTIVE_ROLES = /* @__PURE__ */ new Set([
+        "button",
+        "link",
+        "menuitem",
+        "option",
+        "radio",
+        "checkbox",
+        "tab",
+        "textbox",
+        "combobox",
+        "slider",
+        "spinbutton",
+        "listbox",
+        "search",
+        "searchbox",
+        "row",
+        "cell",
+        "gridcell"
+      ]);
+      _BH_HIGHLIGHT_COLORS = [
+        "#e6194B",
+        "#3cb44b",
+        "#4363d8",
+        "#f58231",
+        "#911eb4",
+        "#42d4f4",
+        "#f032e6",
+        "#bfef45"
+      ];
+      BH_KEYS = {
+        Enter: [13, "Enter", "\r"],
+        Tab: [9, "Tab", "	"],
+        Backspace: [8, "Backspace", ""],
+        Escape: [27, "Escape", ""],
+        Delete: [46, "Delete", ""],
+        " ": [32, "Space", " "],
+        ArrowLeft: [37, "ArrowLeft", ""],
+        ArrowUp: [38, "ArrowUp", ""],
+        ArrowRight: [39, "ArrowRight", ""],
+        ArrowDown: [40, "ArrowDown", ""],
+        Home: [36, "Home", ""],
+        End: [35, "End", ""],
+        PageUp: [33, "PageUp", ""],
+        PageDown: [34, "PageDown", ""]
+      };
+      BH_KC = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, " ": 32, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };
+    }
+  });
 
   // extension/browser-harness/src/harness/cdp.js
   function _bhTimeout(ms, label) {
@@ -147,6 +167,11 @@
   function _bhSendRaw(tabId, method, params, timeoutMs) {
     return _bhSendCmd({ tabId }, method, params, timeoutMs);
   }
+  var init_cdp = __esm({
+    "extension/browser-harness/src/harness/cdp.js"() {
+      init_constants();
+    }
+  });
 
   // extension/browser-harness/src/harness/lifecycle.js
   async function bhAttach(tabId) {
@@ -183,37 +208,132 @@
       return await _bhSendRaw(tabId, method, params, tm);
     }
   }
-  if (!chrome.debugger.onDetach._bhInstalled) {
-    chrome.debugger.onDetach.addListener((source) => {
-      if (source && source.tabId != null) {
-        BH_ATTACHED.delete(source.tabId);
-        BH_EVENTS.delete(source.tabId);
-        BH_PENDING_DIALOGS.delete(source.tabId);
-        const t = BH_DIALOG_AUTO_TIMERS.get(source.tabId);
-        if (t) clearTimeout(t);
-        BH_DIALOG_AUTO_TIMERS.delete(source.tabId);
-        bhHealthClear(source.tabId);
+  var init_lifecycle = __esm({
+    "extension/browser-harness/src/harness/lifecycle.js"() {
+      init_constants();
+      init_state();
+      init_cdp();
+      if (!chrome.debugger.onDetach._bhInstalled) {
+        chrome.debugger.onDetach.addListener((source) => {
+          if (source && source.tabId != null) {
+            BH_ATTACHED.delete(source.tabId);
+            BH_EVENTS.delete(source.tabId);
+            BH_PENDING_DIALOGS.delete(source.tabId);
+            const t = BH_DIALOG_AUTO_TIMERS.get(source.tabId);
+            if (t) clearTimeout(t);
+            BH_DIALOG_AUTO_TIMERS.delete(source.tabId);
+            bhHealthClear(source.tabId);
+          }
+        });
+        chrome.debugger.onDetach._bhInstalled = true;
       }
-    });
-    chrome.debugger.onDetach._bhInstalled = true;
-  }
-  if (!chrome.debugger.onEvent._bhInstalled) {
-    chrome.debugger.onEvent.addListener((source, method, params) => {
-      const tabId = source && source.tabId;
-      if (tabId == null) return;
-      for (const w of BH_WATCHDOGS) w._dispatch(tabId, method, params);
-      let buf = BH_EVENTS.get(tabId);
-      if (!buf) {
-        buf = [];
-        BH_EVENTS.set(tabId, buf);
+      if (!chrome.debugger.onEvent._bhInstalled) {
+        chrome.debugger.onEvent.addListener((source, method, params) => {
+          const tabId = source && source.tabId;
+          if (tabId == null) return;
+          for (const w of BH_WATCHDOGS) w._dispatch(tabId, method, params);
+          let buf = BH_EVENTS.get(tabId);
+          if (!buf) {
+            buf = [];
+            BH_EVENTS.set(tabId, buf);
+          }
+          buf.push({ method, params, t: Date.now() });
+          if (buf.length > BH_EVENT_LIMIT) buf.shift();
+        });
+        chrome.debugger.onEvent._bhInstalled = true;
       }
-      buf.push({ method, params, t: Date.now() });
-      if (buf.length > BH_EVENT_LIMIT) buf.shift();
-    });
-    chrome.debugger.onEvent._bhInstalled = true;
+    }
+  });
+
+  // extension/browser-harness/src/harness/screenshot.js
+  var screenshot_exports = {};
+  __export(screenshot_exports, {
+    bhCaptureScreenshot: () => bhCaptureScreenshot
+  });
+  async function bhCaptureScreenshot(tabId, { full = false, maxDim = null, cssNormalize = false, timeoutMs = null, attempts = null } = {}) {
+    await bhAttach(tabId);
+    const tm = timeoutMs != null ? timeoutMs : full ? 12e4 : 5e3;
+    const tries = attempts != null ? attempts : full ? 1 : 3;
+    let r, lastErr;
+    for (let i = 0; i < tries; i++) {
+      try {
+        r = await bhCdp(tabId, "Page.captureScreenshot", { format: "png", captureBeyondViewport: full }, { timeoutMs: tm });
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (i + 1 >= tries) throw e;
+        await new Promise((res) => setTimeout(res, 250));
+      }
+    }
+    const original = r.data;
+    if (!maxDim && !cssNormalize) return original;
+    if (typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined") {
+      return { data: original, width: 0, height: 0, cssWidth: 0, cssHeight: 0, dpr: 1, scale: 1 };
+    }
+    let cssWidth = 0, cssHeight = 0, dpr = 1;
+    try {
+      const info = await bhCdp(tabId, "Runtime.evaluate", {
+        expression: "JSON.stringify({w:innerWidth,h:innerHeight,dpr:devicePixelRatio||1})",
+        returnByValue: true
+      });
+      const m = JSON.parse(info && info.result && info.result.value || "{}");
+      cssWidth = m.w || 0;
+      cssHeight = m.h || 0;
+      dpr = m.dpr || 1;
+    } catch {
+    }
+    let bmp;
+    try {
+      const blob = await (await fetch(`data:image/png;base64,${original}`)).blob();
+      bmp = await createImageBitmap(blob);
+    } catch (e) {
+      console.warn("[BrowserHarness] screenshot decode failed:", e.message);
+      return { data: original, width: 0, height: 0, cssWidth, cssHeight, dpr, scale: 1 };
+    }
+    let targetW = bmp.width;
+    let targetH = bmp.height;
+    if (cssNormalize && cssWidth && cssHeight) {
+      targetW = cssWidth;
+      targetH = cssHeight;
+    }
+    if (maxDim && Math.max(targetW, targetH) > maxDim) {
+      const k = maxDim / Math.max(targetW, targetH);
+      targetW = Math.max(1, Math.round(targetW * k));
+      targetH = Math.max(1, Math.round(targetH * k));
+    }
+    let data = original;
+    if (targetW !== bmp.width || targetH !== bmp.height) {
+      try {
+        const canvas = new OffscreenCanvas(targetW, targetH);
+        canvas.getContext("2d").drawImage(bmp, 0, 0, targetW, targetH);
+        const out = await canvas.convertToBlob({ type: "image/png" });
+        const buf = new Uint8Array(await out.arrayBuffer());
+        let bin = "";
+        for (let i = 0; i < buf.byteLength; i++) bin += String.fromCharCode(buf[i]);
+        data = btoa(bin);
+      } catch (e) {
+        console.warn("[BrowserHarness] screenshot resize failed:", e.message);
+      }
+    }
+    const scale = cssWidth > 0 ? targetW / cssWidth : 1;
+    return { data, width: targetW, height: targetH, cssWidth, cssHeight, dpr, scale };
   }
+  var init_screenshot = __esm({
+    "extension/browser-harness/src/harness/screenshot.js"() {
+      init_lifecycle();
+    }
+  });
+
+  // extension/browser-harness/src/harness/index.js
+  init_state();
+  init_lifecycle();
+
+  // extension/browser-harness/src/harness/watchdog.js
+  init_constants();
+  init_state();
 
   // extension/browser-harness/src/harness/dialog.js
+  init_lifecycle();
   async function bhHandleDialog(tabId, accept = true, promptText = null) {
     await bhAttach(tabId);
     const params = { accept };
@@ -324,6 +444,9 @@
   }
 
   // extension/browser-harness/src/harness/liveness.js
+  init_constants();
+  init_state();
+  init_lifecycle();
   async function _bhPing(tabId) {
     if (!bhHealthIsEnabled()) return;
     if (bhAgentIsBusy()) return;
@@ -366,6 +489,8 @@
   }
 
   // extension/browser-harness/src/harness/navigation.js
+  init_lifecycle();
+  init_state();
   async function bhGotoUrl(tabId, url) {
     await bhAttach(tabId);
     return await bhCdp(tabId, "Page.navigate", { url });
@@ -393,6 +518,16 @@
     if (r && r.result && r.result.value) return JSON.parse(r.result.value);
     return { url: "", title: "", w: 0, h: 0, sx: 0, sy: 0, pw: 0, ph: 0 };
   }
+
+  // extension/browser-harness/src/harness/input.js
+  init_constants();
+  init_lifecycle();
+
+  // extension/browser-harness/src/harness/interactive.js
+  init_constants();
+  init_state();
+  init_cdp();
+  init_lifecycle();
 
   // extension/browser-harness/src/harness/injected/page-helpers.bhinject
   var page_helpers_default = `// In-page interactive-element helper. Bundled in by esbuild's text loader
@@ -554,6 +689,9 @@
       if (name) attrs.name = truncate(name.trim(), 80);
       const v = el.value;
       if (v) attrs.value = truncate(String(v).trim(), 80);
+      if (t === 'checkbox' || t === 'radio') {
+        attrs.checked = el.indeterminate ? 'mixed' : String(el.checked);
+      }
       // Compound-component info for range / number sliders. Mirrors
       // browser_use's compound_components: surfaces min/max/step so the
       // LLM knows the valid value range without having to introspect.
@@ -570,6 +708,8 @@
       if (name) attrs.name = truncate(name.trim(), 80);
       const ph = el.getAttribute('placeholder');
       if (ph) attrs.placeholder = truncate(ph.trim(), 80);
+      attrs.value = truncate(String(el.value || ''), 160);
+      if (tag === 'SELECT') attrs.selected = Array.from(el.selectedOptions || [], o => truncate(o.textContent.trim(), 80)).join(', ');
     } else if (tag === 'METER' || tag === 'PROGRESS') {
       const min = el.getAttribute('min');
       const max = el.getAttribute('max');
@@ -595,7 +735,7 @@
     }
     // ARIA state for toggleable widgets
     const checked = el.getAttribute('aria-checked');
-    if (checked) attrs.checked = checked;
+    if (checked && attrs.checked === undefined) attrs.checked = checked;
     const expanded = el.getAttribute('aria-expanded');
     if (expanded) attrs.expanded = expanded;
     const pressed = el.getAttribute('aria-pressed');
@@ -1213,6 +1353,10 @@
   }
 
   // extension/browser-harness/src/harness/runtime.js
+  init_constants();
+  init_state();
+  init_cdp();
+  init_lifecycle();
   function _bhDecodeUnserializable(v) {
     if (v === "NaN") return NaN;
     if (v === "Infinity") return Infinity;
@@ -1295,6 +1439,8 @@
   }
 
   // extension/browser-harness/src/harness/wait.js
+  init_lifecycle();
+  init_state();
   function bhWait(ms = 1e3) {
     return new Promise((r) => setTimeout(r, ms));
   }
@@ -1348,11 +1494,15 @@
   }
 
   // extension/browser-harness/src/harness/input.js
+  async function prepareInput(tabId) {
+    await bhAttach(tabId);
+    await bhCdp(tabId, "Emulation.setFocusEmulationEnabled", { enabled: true }, { timeoutMs: 5e3 });
+  }
   async function bhClickAt(tabId, x, y, opts = {}) {
     const button = opts.button || "left";
     const clicks = opts.clicks || 1;
     const wantSnap = opts.snap !== false;
-    await bhAttach(tabId);
+    await prepareInput(tabId);
     const snap = wantSnap ? await _bhSnapToInteractive(tabId, x, y) : { x, y, snapped: false };
     const cx = snap.x;
     const cy = snap.y;
@@ -1393,33 +1543,35 @@
     } catch (e) {
       releaseFailed = true;
     }
-    if (pressFailed && releaseFailed && snap.snapped && opts.fallback !== false) {
-      snap.fallback = await _bhJsClickFallback(tabId, cx, cy);
+    if (pressFailed || releaseFailed) {
+      throw new Error("Click outcome is uncertain. Read the page before another action.");
     }
     return snap;
   }
   async function bhTypeText(tabId, text) {
-    await bhAttach(tabId);
+    await prepareInput(tabId);
     await bhCdp(tabId, "Input.insertText", { text });
   }
   async function bhPressKey(tabId, key, modifiers = 0) {
-    await bhAttach(tabId);
+    await prepareInput(tabId);
+    const printable = [...key].length === 1;
+    const letter = /^[a-z]$/i.test(key), digit = /^[0-9]$/.test(key);
     const entry = BH_KEYS[key] || [
-      key.length === 1 ? key.charCodeAt(0) : 0,
-      key,
-      key.length === 1 ? key : ""
+      letter ? key.toUpperCase().charCodeAt(0) : digit ? key.charCodeAt(0) : 0,
+      letter ? `Key${key.toUpperCase()}` : digit ? `Digit${key}` : "",
+      printable ? key : ""
     ];
     const [vk, code, text] = entry;
     const base = { key, code, modifiers, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk };
     await bhCdp(tabId, "Input.dispatchKeyEvent", { type: "keyDown", ...base });
-    if (text && text.length === 1) {
+    if (text && !(modifiers & 7)) {
       await bhCdp(tabId, "Input.dispatchKeyEvent", { type: "char", text, ...base });
     }
     await bhCdp(tabId, "Input.dispatchKeyEvent", { type: "keyUp", ...base });
   }
   async function bhScroll(tabId, x, y, dy = -300, dx = 0) {
-    await bhAttach(tabId);
-    await bhCdp(tabId, "Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: dx, deltaY: dy });
+    await prepareInput(tabId);
+    await bhCdp(tabId, "Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: dx, deltaY: dy }, { timeoutMs: 5e3 });
   }
   async function bhFillInput(tabId, selector, text, { clearFirst = true, timeoutMs = 0 } = {}) {
     if (timeoutMs > 0) {
@@ -1427,11 +1579,11 @@
         throw new Error(`fill_input: element not found: ${selector}`);
       }
     }
-    await bhAttach(tabId);
+    await prepareInput(tabId);
     const sel = JSON.stringify(selector);
     const focused = await bhJs(
       tabId,
-      `(()=>{const e=document.querySelector(${sel});if(!e)return false;e.focus();return true})()`
+      `(()=>{const e=document.querySelector(${sel});if(!e)return false;e.focus({preventScroll:true});return true})()`
     );
     if (!focused) throw new Error(`fill_input: element not found: ${selector}`);
     if (clearFirst) {
@@ -1444,7 +1596,7 @@
         windowsVirtualKeyCode: 65,
         nativeVirtualKeyCode: 65
       };
-      await bhCdp(tabId, "Input.dispatchKeyEvent", { type: "rawKeyDown", ...selectAll });
+      await bhCdp(tabId, "Input.dispatchKeyEvent", { type: "rawKeyDown", ...selectAll, commands: ["selectAll"] });
       await bhCdp(tabId, "Input.dispatchKeyEvent", { type: "keyUp", ...selectAll });
       await bhPressKey(tabId, "Backspace");
     }
@@ -1456,6 +1608,9 @@
       `(()=>{const e=document.querySelector(${sel});if(!e)return;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))})()`
     );
   }
+
+  // extension/browser-harness/src/harness/ax.js
+  init_lifecycle();
 
   // extension/browser-harness/src/harness/ax-render.js
   var SKIP_ROLES = /* @__PURE__ */ new Set([
@@ -1472,6 +1627,7 @@
   }
   function bhRenderAx(nodes, opts = {}) {
     const { url = null, maxDepth = 40 } = opts;
+    const excluded = new Set(opts.excludeBackendNodeIds || []);
     if (!nodes || !nodes.length) return url ? `URL: ${url}
 ` : "";
     const byId = new Map(nodes.map((n) => [n.nodeId, n]));
@@ -1480,13 +1636,35 @@
     if (url) out.push(`URL: ${url}`, "");
     const walk = (node, depth) => {
       if (!node || depth > maxDepth) return;
+      if (excluded.has(node.backendDOMNodeId)) return;
       const role = val(node.role);
       const name = val(node.name);
       const skip = node.ignored === true || !role || SKIP_ROLES.has(role);
       if (!skip) {
-        const level = axProp(node, "level");
-        const suffix = level !== void 0 ? ` [level=${level}]` : "";
-        const text = name ? ` "${name}"` : "";
+        const attributes = [];
+        const value = val(node.value);
+        if (value !== void 0 && value !== null) {
+          attributes.push(`value=${JSON.stringify(axProp(node, "protected") ? "\u2022\u2022\u2022\u2022" : value)}`);
+        }
+        for (const property of [
+          "level",
+          "checked",
+          "selected",
+          "pressed",
+          "expanded",
+          "disabled",
+          "required",
+          "invalid",
+          "multiselectable",
+          "valuemin",
+          "valuemax",
+          "valuetext"
+        ]) {
+          const value2 = axProp(node, property);
+          if (value2 !== void 0 && value2 !== null) attributes.push(`${property}=${JSON.stringify(value2)}`);
+        }
+        const suffix = attributes.map((a) => ` [${a}]`).join("");
+        const text = name ? ` ${JSON.stringify(String(name))}` : "";
         out.push(`${"  ".repeat(depth)}- ${role}${text}${suffix}`);
       }
       for (const id of node.childIds || []) {
@@ -1499,6 +1677,7 @@
 
   // extension/browser-harness/src/harness/ax.js
   var AX_TIMEOUT_MS = 8e3;
+  var OWN_UI = "[data-bh-ignore],[data-ai4a11y-ui],#ai4a11y-agent-watch,#ai4a11y-announcer";
   async function bhAxTree(tabId) {
     try {
       await bhCdp(tabId, "Accessibility.enable", {}, { timeoutMs: 2e3 });
@@ -1518,6 +1697,25 @@
   }
   async function bhAxSnapshot(tabId, opts = {}) {
     const nodes = await bhAxTree(tabId);
+    const excluded = new Set(opts.excludeBackendNodeIds || []);
+    for (const id of ["ai4a11y-agent-watch", "ai4a11y-announcer"]) {
+      const overlay = await bhCdp(tabId, "Runtime.evaluate", {
+        expression: `document.getElementById(${JSON.stringify(id)})`,
+        objectGroup: "verification-ui"
+      }, { timeoutMs: 1500 });
+      const objectId = overlay?.result?.objectId;
+      if (objectId) {
+        try {
+          const result = await bhCdp(tabId, "DOM.describeNode", { objectId }, { timeoutMs: 1500 });
+          if (result.node?.backendNodeId) excluded.add(result.node.backendNodeId);
+        } finally {
+          try {
+            await bhCdp(tabId, "Runtime.releaseObject", { objectId }, { timeoutMs: 1500 });
+          } catch {
+          }
+        }
+      }
+    }
     let url = opts.url || null;
     if (!url) {
       try {
@@ -1531,10 +1729,175 @@
       } catch {
       }
     }
-    return { url, text: bhRenderAx(nodes, { ...opts, url }), nodeCount: nodes.length };
+    const semantics = await bhCdp(tabId, "Runtime.evaluate", {
+      expression: `(() => {
+      const ownUI=${JSON.stringify(OWN_UI)};
+      const read=e=>{
+        if(!e || e.matches(ownUI))return '';
+        const style=getComputedStyle(e);
+        if(style.display==='none' || style.visibility==='hidden')return '';
+        if(!e.querySelector(ownUI))return e.innerText || '';
+        return [...e.childNodes].map(n=>n.nodeType===3?n.textContent:n.nodeType===1?read(n):'').filter(text=>text.trim()).join('\\n');
+      };
+      const body=read(document.body).trim(), primary=read(document.querySelector('main,[role="main"]')).trim();
+      const readable=primary && body.includes(primary)
+        ? primary+'\\n\\nOther page content:\\n'+body.replace(primary,'').trim() : body;
+      return JSON.stringify({readable,links:[...document.querySelectorAll('a[href]')]
+        .filter(e=>!e.closest(ownUI) && e.getClientRects().length && /^https?:/.test(e.href))
+        .slice(0,500).map(e=>({label:e.getAttribute('aria-label') || e.title || e.innerText,href:e.href})),
+      controls: [...document.querySelectorAll('input,select,textarea,button')]
+      .filter(e => !e.closest(ownUI) && e.getClientRects().length)
+      .slice(0,160).map(e => ({tag:e.tagName.toLowerCase(),id:e.id,name:e.name,type:e.type,
+        label: e.getAttribute('aria-label') || [...(e.labels || [])].map(l=>l.textContent.trim()).join(' ') || e.textContent.trim().slice(0,180),
+        value: e.type === 'password' || e.type === 'file' ? null : e.value,
+        checked: e.type === 'checkbox' || e.type === 'radio' ? e.checked : null,
+        disabled:e.disabled,required:e.required,
+        options:e.options ? [...e.options].map(o=>({text:o.text,value:o.value,selected:o.selected,disabled:o.disabled})).slice(0,60):null,
+        form:e.form ? {id:e.form.id,action:e.form.action,method:e.form.method}:null})),
+      visualNeeded: !!document.querySelector('canvas,[role="img"]:not(img)')});})()`,
+      returnByValue: true
+    }, { timeoutMs: 2e3 }).catch(() => null);
+    let dom = { controls: [], visualNeeded: false };
+    try {
+      if (semantics?.result?.value) dom = JSON.parse(semantics.result.value);
+    } catch {
+    }
+    const text = bhRenderAx(nodes, { ...opts, url, excludeBackendNodeIds: excluded });
+    let evidence = text;
+    if (dom.readable?.trim()) {
+      const normalize = (s) => String(s).replace(/\s+/g, " ").trim();
+      const rendered = normalize(dom.readable), seen = /* @__PURE__ */ new Set();
+      const names = [];
+      const excludedNodes = /* @__PURE__ */ new Set();
+      const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+      const excludeTree = (n) => {
+        if (!n || excludedNodes.has(n.nodeId)) return;
+        excludedNodes.add(n.nodeId);
+        for (const id of n.childIds || []) excludeTree(byId.get(id));
+      };
+      for (const n of nodes) if (excluded.has(n.backendDOMNodeId)) excludeTree(n);
+      for (const n of nodes) {
+        const name = n.name?.value, norm = normalize(name || "");
+        if (n.ignored || excludedNodes.has(n.nodeId) || !norm || seen.has(norm) || rendered.includes(norm)) continue;
+        seen.add(norm);
+        names.push(`${n.role?.value || "element"} ${JSON.stringify(name)}`);
+      }
+      evidence = `URL: ${url || ""}
+
+RENDERED PAGE TEXT:
+${dom.readable}` + (names.length ? "\n\nADDITIONAL ACCESSIBLE NAMES:\n" + names.join("\n") : "");
+    }
+    return {
+      url,
+      text: evidence + (dom.controls.length ? "\nFORM CONTROLS:\n" + JSON.stringify(dom.controls) : ""),
+      axChars: text.length,
+      readableChars: dom.readable?.length || 0,
+      controls: dom.controls,
+      links: dom.links || [],
+      visualNeeded: dom.visualNeeded || nodes.length < 8,
+      nodeCount: nodes.length
+    };
+  }
+  async function bhVerificationScreenshot(tabId) {
+    const { bhCaptureScreenshot: bhCaptureScreenshot2 } = await Promise.resolve().then(() => (init_screenshot(), screenshot_exports));
+    const expression = `(() => {const s=document.createElement('style');s.id='verification-capture-mask';s.textContent='${OWN_UI}{visibility:hidden!important}';document.documentElement.append(s)})()`;
+    await bhCdp(tabId, "Runtime.evaluate", { expression });
+    try {
+      return await bhCaptureScreenshot2(tabId, { maxDim: 1600, attempts: 1 });
+    } finally {
+      await bhCdp(tabId, "Runtime.evaluate", { expression: "document.getElementById('verification-capture-mask')?.remove()" }).catch(() => {
+      });
+    }
+  }
+  var targetDetails = `function(e) {
+  const ownUI=${JSON.stringify(OWN_UI)};
+  if(!e?.isConnected || !e.closest || e.closest(ownUI))return null;
+  const identities=globalThis.__bhVerificationFieldIdentities ||= {files:new WeakMap(),secrets:new WeakMap()};
+  const identity=(map,key,value)=>{
+    let prior=map.get(key);
+    if(!prior || prior.value!==value) {prior={value,token:crypto.randomUUID()};map.set(key,prior)}
+    return prior.token;
+  };
+  const valueOf=n=>n.type==='file'
+    ? [...n.files].map(f=>({name:f.name,size:f.size,type:f.type,lastModified:f.lastModified,
+        identity:identity(identities.files,f,f)}))
+    : ['password','hidden'].includes(n.type)
+      ? {masked:true,identity:identity(identities.secrets,n,n.value)} : n.value;
+  const doc=e.ownerDocument, body=doc.body?.cloneNode(true);
+  body?.querySelectorAll(ownUI+',script,style,noscript').forEach(n=>n.remove());
+  const pageState=JSON.stringify([body?.textContent, [...doc.querySelectorAll('input,select,textarea')]
+    .filter(n=>!n.closest(ownUI))
+    .map(n=>[n.id,n.name,n.type,valueOf(n),n.checked,n.disabled])]);
+  const attachments=[...doc.querySelectorAll('input[type="file"]')].filter(n=>!n.closest(ownUI))
+    .flatMap(n=>[...n.files].map(f=>({name:f.name,size:f.size,type:f.type})));
+  return {pageState,attachments,tag:e.tagName,role:e.getAttribute('role'),type:e.type,id:e.id,name:e.name,
+    label:e.getAttribute('aria-label') || [...(e.labels||[])].map(l=>l.textContent.trim()).join(' ') || e.textContent.trim().slice(0,240),
+    value:['password','file','hidden'].includes(e.type)?null:e.value,checked:e.checked,disabled:e.disabled,
+    href:e.href,formAction:e.formAction,formMethod:e.formMethod,formEnctype:e.formEnctype,
+    formTarget:e.formTarget,formNoValidate:e.formNoValidate,documentUrl:e.ownerDocument.URL,
+    form:e.form?{id:e.form.id,action:e.form.action,method:e.form.method,enctype:e.form.enctype,target:e.form.target}:null};
+}`;
+  async function bhDescribeActionTarget(tabId, action) {
+    const r = await bhCdp(tabId, "Runtime.evaluate", {
+      expression: `(() => {const a=${JSON.stringify(action)};let e;
+      if(Number.isInteger(a.index)) e=window.__bhInteractive?.[a.index];
+      else if(a.selector) {try{e=document.querySelector(a.selector)}catch{}}
+      else if(Number.isFinite(a.x)&&Number.isFinite(a.y)) e=document.elementFromPoint(a.x,a.y)?.closest('button,a,input,select,textarea,[role="button"]');
+      else if(['type','press_key'].includes(a.action)) e=document.activeElement;
+      return (${targetDetails})(e) ? e : null;})()`
+    }, { timeoutMs: 2e3 });
+    const objectId = r?.result?.objectId;
+    if (!objectId) return null;
+    try {
+      const node = await bhCdp(tabId, "DOM.describeNode", { objectId });
+      const details = await bhCdp(tabId, "Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function(){return (${targetDetails})(this)}`,
+        returnByValue: true
+      });
+      return details?.result?.value ? { ...details.result.value, backendNodeId: node.node.backendNodeId } : null;
+    } finally {
+      await bhCdp(tabId, "Runtime.releaseObject", { objectId }).catch(() => {
+      });
+    }
+  }
+  async function bhActivateVerifiedTarget(tabId, binding, isCurrent) {
+    const { backendNodeId, ...expected } = binding.target || {};
+    if (!backendNodeId || !["click", "click_index"].includes(binding.action.action)) throw new Error("Missing reviewed click target");
+    const resolved = await bhCdp(tabId, "DOM.resolveNode", { backendNodeId });
+    const objectId = resolved.object?.objectId;
+    if (!objectId) throw new Error("The reviewed control is no longer available");
+    try {
+      if (!isCurrent()) throw new Error("The reviewed action was superseded");
+      const result = await bhCdp(tabId, "Runtime.callFunctionOn", {
+        objectId,
+        returnByValue: true,
+        arguments: [{ value: expected }],
+        functionDeclaration: `function(expected) {
+        const actual=(${targetDetails})(this);
+        const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'
+          ?Object.fromEntries(Object.keys(v).filter(k=>v[k]!=null).sort().map(k=>[k,canonical(v[k])])):v;
+        if(!actual || actual.disabled || !this.getClientRects().length || typeof this.click!=='function') return {performed:false,reason:'Control unavailable'};
+        if(JSON.stringify(canonical(actual))!==JSON.stringify(canonical(expected))) return {performed:false,
+          reason:'Changed fields: '+Object.keys(actual).filter(k=>JSON.stringify(canonical(actual[k]))!==JSON.stringify(canonical(expected[k]))).join(', ')};
+        this.click(); return {performed:true};
+      }`
+      });
+      if (result.exceptionDetails || result.result?.value?.performed !== true) throw new Error(
+        `The reviewed control changed before the click (${result.exceptionDetails?.text || result.result?.value?.reason || "Unavailable"})`
+      );
+      return result.result.value;
+    } finally {
+      await bhCdp(tabId, "Runtime.releaseObject", { objectId }).catch(() => {
+      });
+    }
   }
 
+  // extension/browser-harness/src/harness/actions/click.js
+  init_lifecycle();
+
   // extension/browser-harness/src/harness/actions/stale-recovery.js
+  init_state();
   async function _bhResolveStaleByIdentity(tabId, idx) {
     const lastItems = _BH_LAST_ITEMS.get(tabId);
     if (!lastItems || !Array.isArray(lastItems) || idx >= lastItems.length) return null;
@@ -1868,6 +2231,7 @@
   }
 
   // extension/browser-harness/src/harness/actions/type.js
+  init_lifecycle();
   async function bhTypeIndex(tabId, idx, text, opts = {}) {
     return await _bhWithStaleRecovery(
       tabId,
@@ -1966,6 +2330,7 @@
   }
 
   // extension/browser-harness/src/harness/actions/dropdown.js
+  init_lifecycle();
   async function bhDropdownOptions(tabId, idx, opts = {}) {
     return await _bhWithStaleRecovery(
       tabId,
@@ -2144,6 +2509,7 @@
   }
 
   // extension/browser-harness/src/harness/actions/upload.js
+  init_lifecycle();
   async function bhUploadFileIndex(tabId, idx, files, opts = {}) {
     return await _bhWithStaleRecovery(
       tabId,
@@ -2209,6 +2575,7 @@
   }
 
   // extension/browser-harness/src/harness/highlights.js
+  init_constants();
   async function bhDrawHighlights(base64Png, items, opts = {}) {
     if (!items || !items.length) return base64Png;
     if (typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined") {
@@ -2267,77 +2634,11 @@
     return out;
   }
 
-  // extension/browser-harness/src/harness/screenshot.js
-  async function bhCaptureScreenshot(tabId, { full = false, maxDim = null, cssNormalize = false, timeoutMs = null, attempts = null } = {}) {
-    await bhAttach(tabId);
-    const tm = timeoutMs != null ? timeoutMs : full ? 12e4 : 5e3;
-    const tries = attempts != null ? attempts : full ? 1 : 3;
-    let r, lastErr;
-    for (let i = 0; i < tries; i++) {
-      try {
-        r = await bhCdp(tabId, "Page.captureScreenshot", { format: "png", captureBeyondViewport: full }, { timeoutMs: tm });
-        break;
-      } catch (e) {
-        lastErr = e;
-        if (i + 1 >= tries) throw e;
-        await new Promise((res) => setTimeout(res, 250));
-      }
-    }
-    const original = r.data;
-    if (!maxDim && !cssNormalize) return original;
-    if (typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined") {
-      return { data: original, width: 0, height: 0, cssWidth: 0, cssHeight: 0, dpr: 1, scale: 1 };
-    }
-    let cssWidth = 0, cssHeight = 0, dpr = 1;
-    try {
-      const info = await bhCdp(tabId, "Runtime.evaluate", {
-        expression: "JSON.stringify({w:innerWidth,h:innerHeight,dpr:devicePixelRatio||1})",
-        returnByValue: true
-      });
-      const m = JSON.parse(info && info.result && info.result.value || "{}");
-      cssWidth = m.w || 0;
-      cssHeight = m.h || 0;
-      dpr = m.dpr || 1;
-    } catch {
-    }
-    let bmp;
-    try {
-      const blob = await (await fetch(`data:image/png;base64,${original}`)).blob();
-      bmp = await createImageBitmap(blob);
-    } catch (e) {
-      console.warn("[BrowserHarness] screenshot decode failed:", e.message);
-      return { data: original, width: 0, height: 0, cssWidth, cssHeight, dpr, scale: 1 };
-    }
-    let targetW = bmp.width;
-    let targetH = bmp.height;
-    if (cssNormalize && cssWidth && cssHeight) {
-      targetW = cssWidth;
-      targetH = cssHeight;
-    }
-    if (maxDim && Math.max(targetW, targetH) > maxDim) {
-      const k = maxDim / Math.max(targetW, targetH);
-      targetW = Math.max(1, Math.round(targetW * k));
-      targetH = Math.max(1, Math.round(targetH * k));
-    }
-    let data = original;
-    if (targetW !== bmp.width || targetH !== bmp.height) {
-      try {
-        const canvas = new OffscreenCanvas(targetW, targetH);
-        canvas.getContext("2d").drawImage(bmp, 0, 0, targetW, targetH);
-        const out = await canvas.convertToBlob({ type: "image/png" });
-        const buf = new Uint8Array(await out.arrayBuffer());
-        let bin = "";
-        for (let i = 0; i < buf.byteLength; i++) bin += String.fromCharCode(buf[i]);
-        data = btoa(bin);
-      } catch (e) {
-        console.warn("[BrowserHarness] screenshot resize failed:", e.message);
-      }
-    }
-    const scale = cssWidth > 0 ? targetW / cssWidth : 1;
-    return { data, width: targetW, height: targetH, cssWidth, cssHeight, dpr, scale };
-  }
+  // extension/browser-harness/src/harness/index.js
+  init_screenshot();
 
   // extension/browser-harness/src/harness/tabs.js
+  init_constants();
   async function bhListTabs({ includeChrome = true } = {}) {
     const tabs = await chrome.tabs.query({});
     return tabs.filter((t) => includeChrome || !BH_INTERNAL.some((p) => (t.url || "").startsWith(p))).map((t) => ({ tabId: t.id, title: t.title || "", url: t.url || "" }));
@@ -2398,6 +2699,9 @@
     // these answer "what does the page say".
     axTree: bhAxTree,
     axSnapshot: bhAxSnapshot,
+    verificationScreenshot: bhVerificationScreenshot,
+    describeActionTarget: bhDescribeActionTarget,
+    activateVerifiedTarget: bhActivateVerifiedTarget,
     renderAx: bhRenderAx,
     drawHighlights: bhDrawHighlights,
     clickIndex: bhClickIndex,

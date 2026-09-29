@@ -24,7 +24,7 @@ import { bhHandleDialog } from './dialog.js';
 import { bhGotoUrl, bhGoBack, bhGoForward, bhRefresh, bhPageInfo } from './navigation.js';
 import { bhClickAt, bhTypeText, bhPressKey, bhScroll, bhFillInput } from './input.js';
 import { bhEnumerateInteractive } from './interactive.js';
-import { bhAxTree, bhAxSnapshot, bhRenderAx } from './ax.js';
+import { bhAxTree, bhAxSnapshot, bhRenderAx, bhVerificationScreenshot, bhDescribeActionTarget, bhActivateVerifiedTarget } from './ax.js';
 import { bhClickIndex } from './actions/click.js';
 import { bhTypeIndex } from './actions/type.js';
 import { bhDropdownOptions, bhSelectDropdown } from './actions/dropdown.js';
@@ -71,6 +71,9 @@ globalThis.BrowserHarness = {
   // these answer "what does the page say".
   axTree: bhAxTree,
   axSnapshot: bhAxSnapshot,
+  verificationScreenshot: bhVerificationScreenshot,
+  describeActionTarget: bhDescribeActionTarget,
+  activateVerifiedTarget: bhActivateVerifiedTarget,
   renderAx: bhRenderAx,
   drawHighlights: bhDrawHighlights,
   clickIndex: bhClickIndex,

@@ -100,6 +100,14 @@
             <span class="material-symbols-outlined" style="font-size:16px">mic</span>
           </button>
         </div>
+        <div class="agent-check-row">
+          <label class="switch small">
+            <input type="checkbox" role="switch" id="agentCheckToggle" aria-describedby="agentCheckHint">
+            <span class="switch-track"></span>
+          </label>
+          <label for="agentCheckToggle" class="agent-check-label">Check the agent's work</label>
+          <p class="agent-check-hint" id="agentCheckHint">Off. The agent works on its own.</p>
+        </div>
         <div class="agent-log" id="agentLog" role="log" aria-live="polite" aria-label="Agent progress">
           <div class="agent-log-empty">No runs yet. Type a task and press Run.</div>
         </div>

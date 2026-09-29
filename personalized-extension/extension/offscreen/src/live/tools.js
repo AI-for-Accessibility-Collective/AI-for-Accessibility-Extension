@@ -304,8 +304,12 @@ export async function dispatchToolCall(name, args, signal) {
       const task = (args && typeof args.task === 'string') ? args.task.trim() : '';
       if (!task) return { error: 'no task supplied' };
       const tabMode = args && args.use_current_tab ? 'current' : 'auto';
-      const resp = await sendRuntime({ type: 'bhAgentStart', task, tabMode });
+      const resp = await sendRuntime({ type: 'bhAgentStart', task, tabMode, detach: true });
       if (resp && resp.error) return { error: resp.error };
+      if (resp && resp.preparing) {
+        return { status: 'preparing', task,
+          note: 'The checks for this task are being prepared, usually about 15 seconds. The agent starts right after. Tell the person that in one short sentence; you will be told when it starts or if it cannot.' };
+      }
       return { status: 'started', task };
     }
 

@@ -1,4 +1,184 @@
 (() => {
+  // node_modules/@ai4a11y/tools/utils/verification-decisions.js
+  var decisionIdentity = (value) => JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, item[key]])) : item);
+  var findingKey = (f) => `${f.widget}|${f.phase}|${f.say}` + (f.runtime ? `|${decisionIdentity([f.runtime.decision, f.runtime.action])}` : "");
+  function decisionContext(state) {
+    const widget = state?.gate?.leading || state?.gate?.waitingOn?.[0];
+    const finding = [...state?.findings || []].reverse().find((f) => f.widget === widget);
+    const taskId = state?.taskId || null;
+    return { widget, finding, taskId, decisionKey: decisionIdentity([
+      taskId,
+      widget,
+      finding?.phase,
+      finding?.say || state?.gate?.say,
+      finding?.from,
+      finding?.options,
+      finding?.control,
+      finding?.runtime,
+      state?.observation?.url,
+      state?.observation?.hash
+    ]) };
+  }
+  function decisionChoices(state) {
+    const { finding } = decisionContext(state);
+    if (finding?.runtime?.decision?.choices?.length) {
+      return [...finding.runtime.decision.choices.map((c) => ({
+        label: c.label,
+        response: c.label,
+        kind: "runtime",
+        choiceId: c.id
+      })), { label: "Stop here", response: "stop", kind: "stop" }];
+    }
+    const options = [...new Set((finding?.options || []).filter((o) => typeof o === "string" && o.trim()))].slice(0, 4);
+    const choices = options.map((option) => ({ label: option, response: option, kind: "option" }));
+    if (!choices.length) {
+      choices.push(finding?.control?.label ? { label: finding.control.label, response: finding.control.label, kind: "control" } : { label: "Go on", response: "go on", kind: "continue" });
+    }
+    return [...choices, { label: "Stop here", response: "stop", kind: "stop" }];
+  }
+  function decisionPayload(state, choice) {
+    const { widget, taskId, decisionKey } = decisionContext(state);
+    return { widget, taskId, decisionKey, ...choice };
+  }
+  function decisionMessage(state) {
+    const decision = decisionContext(state).finding?.runtime?.decision;
+    if (!decision) return state?.gate?.say || "Something needs your decision.";
+    const message = String(decision.message || "").trim();
+    const question = String(decision.question || "").trim();
+    if (!message) return question;
+    if (!question) return message;
+    const comparable = (value) => value.replace(/[.!?…]+$/u, "").replace(/\s+/gu, " ").trim().toLocaleLowerCase();
+    const messageComparable = comparable(message), questionComparable = comparable(question);
+    return messageComparable === questionComparable || messageComparable.endsWith(` ${questionComparable}`) ? message : `${message} ${question}`;
+  }
+  function wireDecisionKeys(root) {
+    root.addEventListener("keydown", (event) => {
+      if (!["ArrowDown", "ArrowUp"].includes(event.key) || event.target.tagName !== "BUTTON") return;
+      const buttons = [...root.querySelectorAll("button:not([disabled])")];
+      const index = buttons.indexOf(event.target);
+      if (index < 0) return;
+      event.preventDefault();
+      buttons[(index + (event.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+    });
+  }
+
+  // node_modules/@ai4a11y/tools/utils/verification-decision-view.js
+  function decisionView(state) {
+    const decision = decisionContext(state).finding?.runtime?.decision;
+    const choices = decisionChoices(state);
+    const candidates = (decision?.choices || []).filter((c) => c.action === "select");
+    const fields = [...new Set(candidates.flatMap((c) => (c.facts || []).map((f) => f.name)))].filter((name) => !candidates.every((c) => c.facts?.find((f) => f.name === name)?.value.trim() === c.label.trim()));
+    const shared = candidates.length > 1 ? (candidates[0].facts || []).filter((f) => fields.includes(f.name) && candidates.every((c) => c.facts?.some((other) => other.name === f.name && other.value === f.value))) : [];
+    const differing = fields.filter((name) => !shared.some((f) => f.name === name));
+    const comparison = candidates.length > 1 && differing.length > 0;
+    return {
+      kind: decision?.kind === "commit" ? "commitment" : comparison ? "comparison" : "choice",
+      fields: differing,
+      shared,
+      choices: choices.map((choice) => ({
+        ...choice,
+        detail: decision?.choices?.find((c) => c.id === choice.choiceId) || null
+      }))
+    };
+  }
+  var css = `
+.vd-options{display:grid;gap:10px;width:100%;min-width:0}
+.vd-options button{min-height:44px!important;padding:9px 12px!important;white-space:normal;overflow-wrap:anywhere}
+.vd-candidates{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:10px;min-width:0}
+.vd-option{display:flex;flex-direction:column;gap:10px;min-width:0;container-type:inline-size;border:1px solid #d4d4d8;border-radius:10px;padding:12px;background:#fff;color:#18181b}
+.vd-option dl,.vd-shared dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:6px 10px;margin:0;font-size:inherit;line-height:1.5}
+.vd-option dt,.vd-shared dt{color:#52525b;font-weight:400;overflow-wrap:anywhere}
+.vd-option dd,.vd-shared dd{margin:0;font-weight:500;overflow-wrap:anywhere}
+.vd-shared{padding:0 2px 8px;min-width:0}.vd-shared h3{font-size:inherit;margin:0 0 6px;font-weight:500}
+.vd-option button{margin-top:auto!important;white-space:normal;overflow-wrap:anywhere;width:100%}
+.vd-other{display:flex;gap:8px;flex-wrap:wrap}
+.vd-source{font-size:.9em;overflow-wrap:anywhere;color:#52525b}
+.vd-source summary{cursor:pointer;padding:4px 0}
+.vd-source blockquote{margin:8px 0;padding-left:10px;border-left:2px solid #d4d4d8}
+.vd-options[data-view=commitment] .vd-candidates{grid-template-columns:1fr}
+@container(max-width:240px){.vd-option dl{grid-template-columns:minmax(0,1fr);gap:2px}.vd-option dt{font-size:.9em}.vd-option dd{margin-bottom:6px}}
+@media(forced-colors:active){.vd-option{border-color:CanvasText;background:Canvas;color:CanvasText}}
+`;
+  var viewIdSequence = /* @__PURE__ */ Symbol.for("ai4a11y.verificationDecisionViewSequence");
+  function renderDecisionChoices(state, { document: doc = document, buttonClass, keyAttribute, onChoice }) {
+    if (!doc.getElementById("verification-decision-view-style")) {
+      const style = doc.createElement("style");
+      style.id = "verification-decision-view-style";
+      style.textContent = css;
+      doc.head.append(style);
+    }
+    const el = (tag, cls, text) => {
+      const node = doc.createElement(tag);
+      if (cls) node.className = cls;
+      if (text !== void 0) node.textContent = text;
+      return node;
+    };
+    const identify = (node) => {
+      do {
+        doc[viewIdSequence] = (doc[viewIdSequence] || 0) + 1;
+        node.id = `verification-options-${doc[viewIdSequence]}`;
+      } while (doc.getElementById(node.id));
+      return node.id;
+    };
+    const view = decisionView(state);
+    const root = el("div", "vd-options");
+    root.dataset.view = view.kind;
+    identify(root);
+    const cards = el("div", "vd-candidates"), other = el("div", "vd-other");
+    if (view.shared.length) {
+      const shared = el("section", "vd-shared");
+      shared.setAttribute("aria-label", "Shared details");
+      shared.append(el("h3", "", "Shared details"));
+      const list = el("dl");
+      identify(list);
+      for (const fact of view.shared) list.append(el("dt", "", fact.name), el("dd", "", fact.value));
+      shared.append(list);
+      root.append(shared);
+    }
+    for (const [index, choice] of view.choices.entries()) {
+      const button = el("button", buttonClass, choice.label);
+      button.type = "button";
+      button.setAttribute(keyAttribute, `answer:${decisionContext(state).decisionKey}:${choice.kind}:${index}`);
+      button.addEventListener("click", () => onChoice(decisionPayload(state, choice)));
+      const detail = choice.detail;
+      const descriptions = [];
+      if (detail && (detail.action === "approve" || view.kind === "comparison" && detail.action === "select")) {
+        const card = el("section", "vd-option");
+        card.setAttribute("aria-label", choice.label);
+        const facts = detail.facts || [];
+        const shownFacts = view.kind === "comparison" ? view.fields.map((name) => ({ name, value: facts.find((f) => f.name === name)?.value || "Not stated" })) : facts;
+        if (shownFacts.length) {
+          const list = el("dl");
+          identify(list);
+          descriptions.push(list.id);
+          for (const fact of shownFacts) {
+            list.append(el("dt", "", fact.name), el("dd", "", fact.value));
+          }
+          card.append(list);
+        }
+        if (view.kind === "commitment" && detail.quote) {
+          const source = el("details", "vd-source");
+          source.open = facts.length === 0;
+          const summary = el("summary", "", "What the page says");
+          const sourceKey = `source:${decisionContext(state).decisionKey}:${detail.id}`;
+          summary.setAttribute(keyAttribute, sourceKey);
+          source.dataset.decisionDisclosure = sourceKey;
+          const quotation = el("blockquote", "", detail.quote);
+          identify(quotation);
+          if (!shownFacts.length) descriptions.push(quotation.id);
+          source.append(summary, quotation);
+          card.append(source);
+        }
+        card.append(button);
+        cards.append(card);
+      } else other.append(button);
+      if (descriptions.length) button.setAttribute("aria-describedby", descriptions.join(" "));
+    }
+    if (cards.childElementCount) root.append(cards);
+    if (other.childElementCount) root.append(other);
+    return root;
+  }
+
   // extension/validation/panel.js
   var KEY = "aa.validation";
   function mountValidationPanel(root, { onControl } = {}) {
@@ -6,6 +186,7 @@
     root.setAttribute("aria-live", "polite");
     root.setAttribute("aria-relevant", "additions text");
     let state = null;
+    let checksOn = false;
     let lastPainted = null;
     let focusedGate = null;
     const asList = (v) => Array.isArray(v) ? v : [];
@@ -13,31 +194,98 @@
       const n = document.createElement(tag);
       if (cls) n.className = cls;
       if (text != null) n.textContent = text;
+      if (tag === "summary" && text) n.dataset.vaKey = `disclosure:${text}`;
       return n;
     };
     function render() {
-      const now = JSON.stringify(state ? { ...state, updated: 0 } : null);
+      const now = JSON.stringify([checksOn, state ? { ...state, updated: 0 } : null]);
       if (now === lastPainted) return;
       lastPainted = now;
-      const openKeys = [...root.querySelectorAll("details[open] > summary")].map((n2) => n2.textContent);
+      const openKeys = new Map([...root.querySelectorAll("details > summary")].map((n2) => [n2.dataset.vaKey || n2.textContent, n2.parentElement.open]));
       const active = document.activeElement;
       const activeKey = root.contains(active) ? active.dataset?.vaKey || null : null;
       const activeText = root.contains(active) ? active.textContent : null;
+      const drafts = new Map([...root.querySelectorAll("input[data-va-key]")].map((input) => [input.dataset.vaKey, input.value]));
       const typing = root.contains(active) && active.tagName === "INPUT" ? { value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
       const scroll = root.scrollTop;
       root.textContent = "";
       if (!state || !state.contract) {
-        root.append(startForm());
+        root.append(settingCard());
+        if (checksOn) root.append(startForm());
+        for (const input of root.querySelectorAll('input[type="text"][data-va-key]')) {
+          if (drafts.has(input.dataset.vaKey)) input.value = drafts.get(input.dataset.vaKey);
+        }
+        const again = activeKey && [...root.querySelectorAll("[data-va-key]")].find((n2) => n2.dataset.vaKey === activeKey);
+        if (again) again.focus();
         return;
       }
+      const held = state.gate?.allowed === false;
       const c = state.contract;
-      const ask = el("section", "va-ask");
-      ask.append(el("h2", null, "What you asked for"));
-      ask.append(el("p", null, describe(c)));
+      const ask = el(held ? "details" : "section", "va-ask");
+      ask.append(el(held ? "summary" : "h2", null, "What you asked for"));
+      ask.append(el("p", null, state.opts?.request || describe(c)));
       const edit = el("button", "va-edit", "Change something");
-      edit.addEventListener("click", () => onControl?.({ action: "edit-ask" }));
+      edit.addEventListener("click", () => onControl?.(state.opts?.requireModel ? { action: "edit-ask", field: "request", value: state.opts.request || c.said } : { action: "edit-ask" }));
       ask.append(edit);
       root.append(ask);
+      if (state.modelState?.status === "preparing" || state.modelState?.status === "failed") {
+        const preparing = state.modelState.status === "preparing";
+        const preparation = el("section", "va-preparation");
+        preparation.setAttribute("role", "status");
+        preparation.append(el("h2", null, preparing ? "Getting the checks ready" : "The task did not start"));
+        preparation.append(el("p", null, preparing ? "I\u2019m reading your request and deciding what to watch for. This usually takes about 15 seconds, and the agent starts right after." : state.modelState.error || "I could not prepare checks for this request."));
+        if (!preparing && state.opts?.request) {
+          const retry = el("button", "va-do primary", "Try again");
+          retry.dataset.vaKey = "retry-preparation";
+          retry.addEventListener("click", () => onControl?.({ action: "retry", task: state.opts.request, tabId: state.opts.tabId }));
+          preparation.append(retry);
+        }
+        root.append(preparation);
+      }
+      if (state.completion) {
+        const result = el("section", "va-completion");
+        result.setAttribute("role", "status");
+        result.append(el("h2", null, state.completion.complete ? "Completion verified" : "Completion not verified"));
+        result.append(el("p", null, state.completion.reason));
+        for (const check of asList(state.completion.checks)) {
+          result.append(el("p", null, `${check.goal}: ${check.status === "complete" ? "Verified" : "Not verified"}`));
+          if (check.quote) result.append(el("blockquote", null, check.quote));
+          if (check.url) result.append(el("p", "va-muted", `Source: ${check.url}`));
+        }
+        root.append(result);
+      }
+      if (state.taskModel || state.progress) {
+        const model = el("details", "va-plan");
+        model.setAttribute("aria-live", "off");
+        model.append(el("summary", null, "Task model and progress"));
+        for (const selected of asList(state.taskModel?.selection)) {
+          model.append(el("p", null, selected.id.replace(/[+_-]/g, " ").replace(/^./, (c2) => c2.toUpperCase())));
+        }
+        const requirements = asList(state.taskModel?.requirements);
+        if (requirements.length) {
+          model.append(el("h3", null, "From your request"));
+          const list2 = el("ul");
+          for (const requirement of requirements) list2.append(el("li", null, requirement.quote));
+          model.append(list2);
+        }
+        const statusText = {
+          unchecked: "Not checked yet",
+          active: "On this page",
+          unresolved: "Still unresolved",
+          completed: "Completed",
+          "not-applicable": "Not needed"
+        };
+        const nodes = Object.values(state.progress || {});
+        const list = el("ul");
+        for (const node of nodes.filter((n2) => n2.status !== "unchecked" || !String(n2.id).includes("."))) {
+          const item = el("li", null, `${node.label}: ${statusText[node.status] || "Not checked yet"}`);
+          if (node.evidence?.quote) item.append(el("blockquote", null, node.evidence.quote));
+          list.append(item);
+        }
+        model.append(list);
+        if (state.observation?.status === "failed") model.append(el("p", null, "I could not check this page."));
+        root.append(model);
+      }
       for (const g of asList(state.unspecified)) {
         const q = el("section", "va-gap");
         q.append(el("p", "va-text", g.ask));
@@ -53,49 +301,241 @@
         gate.setAttribute("role", "alertdialog");
         gate.setAttribute("aria-label", "The agent is waiting for you");
         gate.append(el("h2", null, "Waiting for you"));
-        gate.append(el("p", null, state.gate.say || "Something needs your decision."));
-        const answers = el("div", "va-answers");
-        for (const [label, response, primary] of gateChoices(state)) {
-          const b = el("button", `va-do${primary ? " primary" : ""}`, label);
-          b.addEventListener("click", () => onControl?.({
-            action: "answer",
-            widget: (state.gate.waitingOn || [])[0],
-            response
-          }));
-          answers.append(b);
-        }
+        const message = el("p", null, decisionMessage(state));
+        message.id = "va-decision-message";
+        gate.setAttribute("aria-describedby", message.id);
+        gate.append(message);
+        const gateState = state;
+        const answers = renderDecisionChoices(gateState, {
+          buttonClass: "va-do",
+          keyAttribute: "data-va-key",
+          onChoice: (payload) => onControl?.({ action: "answer", ...payload })
+        });
         gate.append(answers);
+        const form = el("form", "va-decision-answer");
+        const input = el("input", "va-ask-input");
+        input.placeholder = "Or tell me something else";
+        input.setAttribute("aria-label", "Or tell me something else");
+        input.dataset.vaKey = `answer-text:${decisionContext(gateState).decisionKey}`;
+        const send2 = el("button", "va-do", "Send");
+        send2.type = "submit";
+        form.append(input, send2);
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          if (!input.value.trim()) return;
+          onControl?.({ action: "answer", ...decisionPayload(
+            gateState,
+            { kind: "custom", response: input.value.trim() }
+          ) });
+        });
+        gate.append(form);
+        wireDecisionKeys(gate);
         root.append(gate);
-        const gateKey = (state.gate.waitingOn || []).join("|") + (state.gate.say || "");
+        const gateKey = decisionContext(gateState).decisionKey;
         if (gateKey !== focusedGate) {
           focusedGate = gateKey;
-          requestAnimationFrame(() => gate.querySelector(".va-do")?.focus());
+          const focusBeforeFrame = document.activeElement;
+          requestAnimationFrame(() => {
+            if (gate.isConnected && focusedGate === gateKey && document.activeElement === focusBeforeFrame && !gate.contains(document.activeElement)) gate.querySelector(".va-do")?.focus();
+          });
         }
       }
+      if (state.holder === "person") {
+        const wheel = el("section", "va-wheel");
+        wheel.setAttribute("role", "status");
+        const at = state.handOverNodeLabel || state.handOverNode;
+        wheel.append(el("h2", null, "You have this part"));
+        wheel.append(el("p", null, at ? `The agent is paused at ${at} and still reading the page.` : "The agent is paused and still reading the page."));
+        const row = el("div", "va-answers");
+        const back = el("button", "va-do primary", "Give it back");
+        back.dataset.vaKey = "hand-back";
+        back.addEventListener("click", () => onControl?.({
+          action: "hand-back",
+          node: state.handOverNode || null
+        }));
+        row.append(back);
+        wheel.append(row);
+        root.append(wheel);
+      }
+      const decisions = state.decisions || [];
+      if (decisions.length) {
+        const box = el(held ? "details" : "section", "va-back");
+        box.append(el(held ? "summary" : "h2", null, "Go back to a decision"));
+        const list = el("ul", "va-steps");
+        for (const d of decisions.slice(-8).reverse()) {
+          const li = el("li");
+          const b = el("button", "va-do", d.label || `step ${d.nodeId}`);
+          b.dataset.vaKey = `why:${d.nodeId}`;
+          b.addEventListener("click", () => onControl?.({ action: "why", nodeId: d.nodeId }));
+          li.append(b);
+          if (d.phase) li.append(el("span", "va-where", d.phase));
+          list.append(li);
+        }
+        box.append(list);
+        const back = state.lookedBack;
+        if (back && back.found) {
+          const ans = el("div", "va-looked");
+          ans.append(el(
+            "p",
+            "va-text",
+            `${back.label || back.nodeId}${back.phase ? ` - ${back.phase}` : ""}`
+          ));
+          for (const f of back.findings || []) {
+            ans.append(el("p", "va-where", `checked: ${f.widget}`));
+          }
+          if ((back.actions || []).length) {
+            ans.append(el("p", "va-where", `did: ${back.actions.join(", ")}`));
+          }
+          ans.append(el("p", "va-note", back.note));
+          box.append(ans);
+        } else if (back) {
+          box.append(el("p", "va-where", back.say || "Nothing on the record for that."));
+        }
+        root.append(box);
+      }
+      {
+        const box = el(held ? "details" : "section", "va-ask-page");
+        box.append(el(held ? "summary" : "h2", null, "Ask about this page"));
+        const form = document.createElement("form");
+        form.className = "va-answers";
+        const input = el("input", "va-ask-input");
+        input.type = "text";
+        input.placeholder = "ask about something on this page";
+        input.setAttribute("aria-label", "Ask a question about this page");
+        input.dataset.vaKey = "ask-input";
+        const go = el("button", "va-do primary", "Ask");
+        go.type = "submit";
+        form.append(input, go);
+        form.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const q = input.value.trim();
+          if (!q) return;
+          input.value = "";
+          onControl?.({ action: "ask", question: q });
+        });
+        box.append(form);
+        for (const a of (state.asked || []).slice(-3).reverse()) {
+          const item = el("div", "va-asked");
+          item.append(el("p", "va-text", a.question));
+          item.append(el("p", null, a.say || a.answer || "This page does not say."));
+          if (a.quote) item.append(el("p", "va-where", a.quote));
+          box.append(item);
+        }
+        root.append(box);
+      }
+      if (state.wrapUp) {
+        const rev = el("section", "va-review");
+        rev.append(el("h2", null, "The run, in review"));
+        const kept = (state.findings || []).filter((f) => f.level === "ambient" && !f.confirming);
+        const outcome = kept.filter((f) => f.moment === "Completion");
+        const rest = kept.filter((f) => f.moment !== "Completion");
+        for (const f of outcome) {
+          const item = el("div", "va-asked");
+          item.append(el("p", "va-text", f.say));
+          if (f.from) item.append(el("p", "va-where", f.from));
+          if (f.surface) item.append(el("p", "va-surface", surfaceLine(f)));
+          rev.append(item);
+        }
+        if (!outcome.length && !state.completion) {
+          rev.append(el("p", null, "No outcome question was answerable from the pages seen."));
+        }
+        const strength = (f) => f.eu ? Math.max(...Object.values(f.eu).filter((x) => typeof x === "number")) : 0;
+        const groups = /* @__PURE__ */ new Map();
+        for (const f of rest) {
+          const k = f.cluster || "other";
+          if (!groups.has(k)) groups.set(k, []);
+          groups.get(k).push(f);
+        }
+        for (const [k, fs] of [...groups.entries()].sort((a, b) => b[1].length - a[1].length)) {
+          fs.sort((a, b) => strength(b) - strength(a));
+          const d = el("details", "va-revgroup");
+          const sum = el(
+            "summary",
+            null,
+            `${fs.length} kept about ${k === "facts" ? "what the pages said" : k}`
+          );
+          d.append(sum);
+          for (const f of fs) {
+            const item = el("div", "va-asked");
+            item.append(el("p", "va-text", f.say));
+            if (f.from) item.append(el("p", "va-where", f.from));
+            if (f.surface) item.append(el("p", "va-surface", surfaceLine(f)));
+            d.append(item);
+          }
+          rev.append(d);
+        }
+        root.append(rev);
+      }
       const heldNow = new Set(
-        state.gate && state.gate.allowed === false && state.gate.waitingOn || []
+        state.gate && state.gate.allowed === false && state.gate.leading ? [state.gate.leading] : []
       );
       const findings = (state.findings || []).filter((f) => f.level !== "ambient" || f.confirming).filter((f) => !heldNow.has(f.widget));
       if (!findings.length) {
-        root.append(el("div", "va-empty", "Nothing to flag yet."));
+        if (state.gate?.allowed !== false) root.append(el("div", "va-empty", "Nothing to flag yet."));
       } else {
+        const seenAlready = new Set(state.acknowledged || []);
         const list = el("ul", "va-list");
+        let lastGroup = null;
         for (const f of findings) {
-          const li = el("li", `va-item ${tone(f)}`);
+          const group = f.nodeLabel || f.phase || null;
+          if (group && group !== lastGroup) {
+            const h = el("li", "va-nodehead");
+            h.append(el("span", null, group));
+            list.append(h);
+            lastGroup = group;
+          }
+          const done = seenAlready.has(findingKey(f));
+          const li = el("li", `va-item ${tone(f)}${done ? " va-read" : ""}`);
           li.append(el("span", "va-dot"));
           const body = el("div", "va-body");
           body.append(el("p", "va-text", f.say));
           if (f.from) body.append(el("p", "va-where", f.from));
+          if (f.surface) body.append(el("p", "va-surface", surfaceLine(f)));
+          if (done) {
+            li.append(body);
+            list.append(li);
+            continue;
+          }
+          const row = el("div", "va-answers");
+          if (Array.isArray(f.options) && f.options.length) {
+            for (const opt of f.options.slice(0, 4)) {
+              const b = el("button", "va-do primary", `Pick ${opt}`);
+              b.dataset.vaKey = `opt:${f.widget}:${opt}`;
+              b.addEventListener("click", () => {
+                onControl?.({
+                  ...f.control || {},
+                  action: f.control?.action || "select-options",
+                  node: f.node ?? null,
+                  widget: f.widget,
+                  option: opt
+                });
+                onControl?.({ action: "ack", key: findingKey(f) });
+              });
+              row.append(b);
+            }
+          }
           if (f.control) {
             const b = el("button", "va-do", f.control.label);
             b.dataset.vaKey = `do:${f.widget}`;
-            b.addEventListener("click", () => onControl?.(f.control));
-            body.append(b);
+            b.addEventListener("click", () => {
+              onControl?.(f.control);
+              onControl?.({ action: "ack", key: findingKey(f) });
+            });
+            row.append(b);
           }
+          const skip = el("button", "va-do", f.control?.decline || "Got it");
+          skip.dataset.vaKey = `ack:${f.widget}`;
+          skip.addEventListener("click", () => onControl?.({ action: "ack", key: findingKey(f) }));
+          row.append(skip);
+          body.append(row);
           li.append(body);
           list.append(li);
         }
-        root.append(list);
+        if (held) {
+          const history = el("details", "va-history");
+          history.append(el("summary", null, "Earlier updates"), list);
+          root.append(history);
+        } else root.append(list);
       }
       const foot = el("div", "va-foot");
       const n = (state.said || []).length;
@@ -109,10 +549,15 @@
       foot.append(more);
       root.append(foot);
       for (const sum of root.querySelectorAll("details > summary")) {
-        if (openKeys.includes(sum.textContent)) sum.parentElement.open = true;
+        const key = sum.dataset.vaKey || sum.textContent;
+        if (openKeys.has(key)) sum.parentElement.open = openKeys.get(key);
       }
+      for (const input of root.querySelectorAll("input[data-va-key]")) {
+        if (drafts.has(input.dataset.vaKey)) input.value = drafts.get(input.dataset.vaKey);
+      }
+      const byKey = activeKey ? [...root.querySelectorAll("[data-va-key]")].find((node) => node.dataset.vaKey === activeKey) : null;
       if (typing) {
-        const input = root.querySelector("input");
+        const input = byKey;
         if (input) {
           input.value = typing.value;
           input.focus();
@@ -122,9 +567,8 @@
           }
         }
       } else if (activeKey || activeText) {
-        const byKey = activeKey ? root.querySelector(`[data-va-key="${CSS.escape(activeKey)}"]`) : null;
         if (byKey) byKey.focus();
-        else if (activeText) {
+        else if (!activeKey && activeText) {
           for (const b of root.querySelectorAll("button")) {
             if (b.textContent === activeText) {
               b.focus();
@@ -135,17 +579,39 @@
       }
       root.scrollTop = scroll;
     }
+    function settingCard() {
+      const s = el("section", "va-setting");
+      const id = "va-checks-switch";
+      const row = el("div", "va-setting-row");
+      const box = el("input");
+      box.type = "checkbox";
+      box.id = id;
+      box.setAttribute("role", "switch");
+      box.checked = checksOn;
+      box.dataset.vaKey = "checks-switch";
+      box.setAttribute("aria-describedby", "va-checks-hint");
+      const label = el("label", null, "Check the agent\u2019s work");
+      label.setAttribute("for", id);
+      box.addEventListener("change", () => chrome.storage.sync.set({ verificationLayer: box.checked }));
+      row.append(box, label);
+      s.append(row);
+      const hint = el("p", "va-hint", checksOn ? "On. Before the agent acts I read your request and each page, ask you before choices it should not make for you, and hold payments, bookings and messages until you say yes. Tasks take about 15 seconds longer to start." : "Off. The agent works on its own. Turn this on to have its work checked as it goes.");
+      hint.id = "va-checks-hint";
+      s.append(hint);
+      return s;
+    }
     function startForm() {
       const s = el("section", "va-start");
       const id = "va-ask-input";
-      const label = el("label", null, "What are you looking for?");
+      const label = el("label", null, "Or check a page you are browsing yourself:");
       label.setAttribute("for", id);
       s.append(label);
       const row = el("div", "va-start-row");
       const input = el("input");
       input.id = id;
       input.type = "text";
-      input.placeholder = "flat sandals with a back strap, size 5, under $40";
+      input.dataset.vaKey = "start-input";
+      input.placeholder = "e.g. a refundable hotel near Stanford under $700";
       const go = el("button", "va-do primary", "Start checking");
       const submit = () => {
         const said = input.value.trim();
@@ -169,28 +635,10 @@
       return s;
     }
     const tone = (f) => f.confirming ? "ok" : f.level === "stop" ? "stop" : f.level === "aside" ? "note" : "quiet";
-    function gateChoices(s) {
-      const w = ((s.gate.waitingOn || [])[0] || "").toLowerCase();
-      if (/size/.test(w)) {
-        return [["Use it anyway", "use it", false], ["Change the size", "change it", true]];
-      }
-      if (/extra items|cap/.test(w)) {
-        return [["Remove the extras", "remove them", true], ["Go ahead", "go ahead", false]];
-      }
-      if (/land/.test(w)) {
-        return [["Try again", "try again", true], ["Stop here", "stop", false]];
-      }
-      if (/count|result|loose|alarm/.test(w)) {
-        return [["Narrow it down", "narrow it down", true], ["Keep them all", "keep them all", false]];
-      }
-      if (/photo/.test(w)) {
-        return [["Describe the photos", "describe the photos", true], ["Skip it", "skip", false]];
-      }
-      if (/total|price|cost/.test(w)) {
-        return [["Check it with me", "read it to me first", true], ["Go ahead", "go ahead", false]];
-      }
-      return [["Go on", "go on", true], ["Stop here", "stop", false]];
-    }
+    const surfaceLine = (f) => [
+      { widget: "Paused for your answer", checkpoint: "Said while continuing", log: "Kept for review" }[f.surface],
+      f.surfaceWhy || null
+    ].filter(Boolean).join(" \xB7 ");
     function describe(c) {
       const bits = [c.item];
       if (c.mustHaves?.length) bits.push(c.mustHaves.join(" and "));
@@ -199,11 +647,17 @@
       if (c.deadline) bits.push(`by ${c.deadline}`);
       return `${bits.filter(Boolean).join(", ")}.`;
     }
-    chrome.storage.local.get(KEY).then((r) => {
+    Promise.all([chrome.storage.local.get(KEY), chrome.storage.sync?.get?.("verificationLayer") ?? {}]).then(([r, s]) => {
       state = r[KEY] || null;
+      checksOn = s.verificationLayer === true;
       render();
     });
     chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "sync" && changes.verificationLayer) {
+        checksOn = changes.verificationLayer.newValue === true;
+        render();
+        return;
+      }
       if (area !== "local" || !changes[KEY]) return;
       state = changes[KEY].newValue;
       render();
@@ -824,11 +1278,19 @@
           chrome.runtime.sendMessage({ type: "validationStart", contract: c.said });
           return;
         }
+        if (c.action === "retry") {
+          chrome.runtime.sendMessage({ type: "bhAgentStart", task: c.task, tabId: c.tabId });
+          return;
+        }
         if (c.action === "answer") {
           chrome.runtime.sendMessage({
             type: "validationAnswer",
             widget: c.widget,
-            response: c.response
+            response: c.response,
+            kind: c.kind,
+            choiceId: c.choiceId,
+            taskId: c.taskId,
+            decisionKey: c.decisionKey
           });
           return;
         }
@@ -836,6 +1298,28 @@
           chrome.runtime.sendMessage({ type: "validationOnRequest" }, (r) => {
             for (const i of r?.items || []) console.log("[also checked]", i.say);
           });
+          return;
+        }
+        if (c.action === "ask") {
+          chrome.runtime.sendMessage({ type: "validationAsk", question: c.question });
+          return;
+        }
+        if (c.action === "ack") {
+          chrome.runtime.sendMessage({ type: "validationAck", key: c.key });
+          return;
+        }
+        if (c.action === "why") {
+          chrome.runtime.sendMessage({ type: "validationWhy", nodeId: c.nodeId });
+          return;
+        }
+        if (c.action === "edit-ask" || c.action === "fill-gap") {
+          const field = c.field || window.prompt(
+            "Which part? (buying, must have, size, budget, how many, needed by)"
+          );
+          if (!field) return;
+          const value = window.prompt(field === "request" ? "Update your request:" : `New value for ${field}:`, c.value || "");
+          if (value == null || !value.trim()) return;
+          chrome.runtime.sendMessage({ type: "validationEdit", field, value: value.trim() });
           return;
         }
         chrome.runtime.sendMessage({ type: "validationControl", control: c });

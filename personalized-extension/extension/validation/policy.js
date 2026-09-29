@@ -31,9 +31,18 @@
 // profile and roams between devices, so how much someone wants interrupting is
 // remembered rather than re-decided.
 
+import { route as euRoute, routeSurface } from './utility.js';
+import { findingKey } from '@ai4a11y/tools/utils/verification-decisions.js';
+
 /** ambient — silent unless it conflicts · aside — one line, agent continues
  *  stop — blocks, waits for an answer */
 export const LEVELS = ['ambient', 'aside', 'stop'];
+
+// The utility model's four routes, folded onto the three levels the rest of
+// the layer speaks. Spoken routes are asides — only the locked stops above
+// ever hold the agent — and the two kept routes are ambient, differing in
+// whether the completion review leads with them.
+const ROUTE_LEVEL = { now: 'aside', after: 'aside', log: 'ambient', ondemand: 'ambient' };
 
 const ORDER = { ambient: 0, aside: 1, stop: 2 };
 
@@ -41,6 +50,96 @@ const ORDER = { ambient: 0, aside: 1, stop: 2 };
 // cart is reversible; what is IN the cart at checkout is what gets bought, and
 // after the order is placed the only remedy is a cancellation window.
 const IRREVERSIBLE_AFTER = new Set(['Add to cart', 'Checkout', 'Review order']);
+
+// ── the task model's own loudness ───────────────────────────────────────────
+//
+// An audited task model carries `speak` on every question: how loud that
+// question is allowed to be, judged once per question with the whole model in
+// view. Five values, three surfaces:
+//
+//   gate      the interactive widget. Holds the run until the person answers.
+//   always    a cognitive checkpoint, spoken every time the page answers it.
+//   on-event  a checkpoint only when the page shows that situation.
+//   if-wrong  a checkpoint only when the page disagrees with what was asked.
+//   never     the agent log. Not spoken; the end report carries it.
+//
+// (`DROP` is a sixth value meaning "not modelled". flattenModel removes those
+// questions before anything is asked, so no finding ever carries it.)
+//
+// When a finding carries one of these it decides the level outright - before
+// the locked stops and instead of the utility model. Measured on the shipped
+// corpus (82 models, 15,338 questions), 1,490 of the 1,747 money-moving
+// questions were audited BELOW gate, so a money lock that outranked speak
+// would hold the run on every one of them and the audit would count for
+// nothing. The contradiction lock yields for the same reason: `if-wrong` is
+// defined as "speak when the page disagrees" and its surface is a checkpoint,
+// so if the lock outranked it every if-wrong that fired would become a hold.
+// A contradiction on a `never` question is therefore kept, not spoken - the
+// audit chose silence for that question, and silence is the default here.
+// The persona notch does not move an audited value either way: quieter would
+// silence what the model said to say, louder would turn a checkpoint into a
+// hold, and only `gate` holds.
+//
+// A finding with no speak value - the corpus path, a generated model, a
+// question the layer wrote for itself off a page - takes the moment path in
+// decide() exactly as it always has.
+export const SPEAK = ['gate', 'always', 'on-event', 'if-wrong', 'never'];
+
+/** The normalised speak value, or null for anything that is not one. */
+export function speakOf(v) {
+  const s = typeof v === 'string' ? v.trim().toLowerCase() : null;
+  return s && SPEAK.includes(s) ? s : null;
+}
+
+/** Which surface each level is, in the names the design uses. */
+export const SURFACE_OF_LEVEL = { stop: 'widget', aside: 'checkpoint', ambient: 'log' };
+
+/**
+ * The level an audited speak value gives a finding, and whether its trigger
+ * fired. The two conditional triggers read what the reasoner's read put on
+ * the finding, and nothing else:
+ *
+ *   on-event fires when the read ESTABLISHED that the situation is on the
+ *     page: the finding rests on a verified quote (every finding does) AND
+ *     the reasoner listed the question's own node, or a step under it, among
+ *     the subtasks this page is serving (`onPage`, derived from
+ *     `alignedNodes` in toFindings). An answer quoted off a page the reasoner
+ *     did not place at that step is a question answered in passing, not that
+ *     situation, and it stays silent with the reason written on it.
+ *   if-wrong fires when the read DISAGREES: the reasoner set `contradictsAsk`
+ *     on the answer (`contradicts` on the finding), the one field where it
+ *     says the page's value departs from what the person asked for. When the
+ *     page agrees, or the question is not about something the person
+ *     specified, it stays silent.
+ *
+ * Both default to silence. A trigger the read cannot decide did not fire.
+ *
+ * @returns {{level: string, why: string, speak: string, surface: string,
+ *            fired: boolean}}
+ */
+export function decideBySpeak(f, speak) {
+  const at = (level, why, fired) =>
+    ({ level, why, speak, surface: SURFACE_OF_LEVEL[level], fired });
+  switch (speak) {
+    case 'gate':
+      return at('stop', 'the model gates here: held until you answer', true);
+    case 'always':
+      return at('aside', 'the model says this every time', true);
+    case 'on-event':
+      return f?.onPage === true
+        ? at('aside', 'the model says this when the page shows it, and this page does', true)
+        : at('ambient', 'the model says this only when the page shows it, and this page '
+             + 'is not at that step; kept for the report', false);
+    case 'if-wrong':
+      return f?.contradicts === true
+        ? at('aside', 'the model says this when the page disagrees with what you asked, '
+             + 'and it does', true)
+        : at('ambient', 'the model says this only when the page disagrees with what you '
+             + 'asked; it agrees, so kept for the report', false);
+    default:
+      return at('ambient', 'the model keeps this for the report', false);
+  }
+}
 
 /**
  * @typedef {Object} Finding
@@ -66,17 +165,96 @@ export function decide(f, state = {}) {
   // being able to ask for; it is not worth interrupting anyone with.
   if (f.confirming) return { level: 'ambient', why: 'a check that passed' };
 
-  if (seen.has(key)) {
+  // A contradiction escapes the repetition guard. The key is question + phase
+  // and does not include the answer, so a page read twice — which is normal,
+  // the navigation trigger fires and an explicit observe follows — could
+  // answer "LAX" the first time and "San Diego" the second, and the second
+  // was silenced as already raised. A value that changed is the whole reason
+  // to look twice.
+  // A contradiction escapes the guard only when the ANSWER changed. The key is
+  // question + phase, so letting every contradiction through meant the same
+  // wrong destination re-fired on each page and became a separate hold: a live
+  // three-page run ended with ten stops, three of them the same question. A
+  // value that CHANGED is the reason to look twice; a value that is still
+  // wrong is the same finding.
+  if (f.runtime ? seen.has(findingKey(f)) : seen.has(key) && !(f.contradicts && !seen.has(`${key}|${f.say}`))) {
     return { level: 'ambient', why: 'already raised at this step' };
+  }
+
+  // The same EVIDENCE already raised at this step, under different wording.
+  // The reasoner supplies a fresh question string every time it re-notices a
+  // fact, so the widget-keyed guard above never fires on the reworded form -
+  // a recorded run surfaced one page failure six times, twice as stops. The
+  // quote is the finding's identity: same quote, same phase, same fact. One
+  // contradiction per evidence still gets its stop (the first wording took
+  // it); everything after is kept, not spoken.
+  if (!f.runtime && state.evidenceKey && f.from
+      && seen.has(`q|${f.phase}|${state.evidenceKey(f.from)}`)) {
+    return { level: 'ambient', why: 'the same evidence was already raised here' };
+  }
+
+  // An audited model has already said how loud this question is. That
+  // decision replaces everything below - the locked stops, the utility route
+  // and the persona notch; the note above decideBySpeak says why each one.
+  const speak = speakOf(f.speak);
+  if (speak && state.routing !== 'utility') return decideBySpeak(f, speak);
+  if (state.routing === 'utility') {
+    if (f.runtime?.support?.status === 'supported') {
+      const decision = f.runtime.decision;
+      const attention = f.runtime.support.attention;
+      // Page-level commitment proposals have no executable target yet.
+      // Ask once after checkAction binds the actual control and consequence.
+      const available = !decision || decision.relevance !== 'now' || decision.kind === 'commit' ? ['log']
+        : decision.kind === 'choose' ? ['widget']
+        : attention?.mode === 'none' ? ['log'] : ['checkpoint', 'log'];
+      const r = routeSurface(f, { model: state.model, signals: state.signals,
+        joiningPause: state.joiningPause, available });
+      return { level: { widget: 'stop', checkpoint: 'aside', log: 'ambient' }[r.surface],
+        surface: r.surface, route: r.surface === 'widget' ? 'now' : r.surface === 'checkpoint' ? 'after' : 'log',
+        eu: r.eu, why: decision?.kind === 'repair' ? 'the request already determines the correction'
+          : 'chosen from the decisions available on this page' };
+    }
+    // Authored gates remain requirements. Other authored speech values are
+    // recorded on the finding; the live decision uses task, page and person.
+    if (speak === 'gate' || f.contradicts || f.moneyMoving === true) {
+      return { level: 'stop', surface: 'widget', why: f.contradicts
+        ? 'contradicts something you said' : 'this decision needs your answer' };
+    }
+    const r = routeSurface(f, { model: state.model, signals: state.signals,
+      joiningPause: state.joiningPause });
+    return { level: { widget: 'stop', checkpoint: 'aside', log: 'ambient' }[r.surface],
+      surface: r.surface, route: r.surface === 'widget' ? 'now' : r.surface === 'checkpoint' ? 'after' : 'log',
+      eu: r.eu, why: 'chosen from the task, page evidence and your access preferences' };
   }
 
   let level, why;
   if (f.contradicts) {
     level = 'stop';
     why = 'contradicts something you said';
-  } else if (IRREVERSIBLE_AFTER.has(f.phase)) {
+  } else if (f.moneyMoving === true) {
+    // The general form of the rule below. A task model marks the questions
+    // whose step is hard to undo — 62 of the 242 gold questions across four
+    // domains carry it — so the model says which moments are irreversible
+    // instead of this file naming three Amazon phases. Checked first, so a
+    // model that carries the field never falls through to the phase names.
     level = 'stop';
     why = 'continuing from here is hard to undo';
+  } else if (IRREVERSIBLE_AFTER.has(f.phase)) {
+    // The Amazon corpus path, which has no task model and therefore no
+    // moneyMoving field. Kept so the shipped demo behaves exactly as before.
+    level = 'stop';
+    why = 'continuing from here is hard to undo';
+  } else if (f.moment != null) {
+    // A task-model finding that is not a locked stop is routed by the utility
+    // model: expected value of each route against what that route costs the
+    // person, with the persona on the cost side. The old rule was one undifferentiated
+    // aside; this is the graded form of the same call, and the locked stops
+    // above are deliberately decided before it so nothing here can soften
+    // them.
+    const r = euRoute(f, { model: state.model,
+                           signals: state.signals || null,
+                           joiningPause: state.joiningPause === true });
+    return { level: ROUTE_LEVEL[r.route], why: r.why, route: r.route, eu: r.eu };
   } else {
     level = 'aside';
     why = 'worth knowing, nothing is committed yet';
@@ -96,7 +274,13 @@ export function decide(f, state = {}) {
   // most people pick is the one that removes the protection. Asides and
   // ambients move freely; the contradiction gate does not.
   const shift = insistenceShift(state);
-  const locked = level === 'stop' && f.contradicts;
+  // Locked covers every reason a finding became a stop, not only contradiction.
+  // It used to be `contradicts` alone, so a money-moving stop — the general
+  // form of the irreversibility rule, and this file's own headline — could be
+  // softened to an aside by one preference, and an aside never enters the
+  // waiting list. "Asking for less is a request for less chatter, not less
+  // safety" has to apply to both reasons or it applies to neither.
+  const locked = level === 'stop';
   if (shift && !locked) {
     const moved = LEVELS[Math.max(0, Math.min(2, ORDER[level] + shift))];
     if (moved !== level) {
@@ -108,7 +292,12 @@ export function decide(f, state = {}) {
 
   // A stop the person cannot answer is a dead end. Drop it to an aside so they
   // hear it and keep moving, rather than being blocked with no way through.
-  if (level === 'stop' && f.answerable === false) {
+  // ...unless the stop is one of the locked kinds. This sat after the lock and
+  // had no exception, so `{contradicts: true, answerable: false}` came out as
+  // an aside — the lock stopped a preference softening it and this softened it
+  // anyway. Nothing emits that pair today, but `answerable` is exactly the
+  // field that moves onto the model next, the way `contradicts` just did.
+  if (level === 'stop' && f.answerable === false && !locked) {
     return { level: 'aside', why: `${why}, but there is nothing to decide here` };
   }
   return { level, why };

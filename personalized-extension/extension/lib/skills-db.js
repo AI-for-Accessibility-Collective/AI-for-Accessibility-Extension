@@ -4,7 +4,7 @@
 globalThis.AA_SKILLS = [
   {
     "name": "calm-browsing",
-    "description": "Reduces sensory load on any page — stops motion, dims the display, and removes clutter. Use for sensory-processing sensitivity, migraine, anxiety, or vestibular discomfort.",
+    "description": "Reduces sensory load on any page — stops motion, dims the display, and removes clutter. Use when motion, brightness, or clutter cause discomfort or overload (common with migraine, vestibular disorders, sensory sensitivity, or anxiety).",
     "supportAreas": [
       "sensory",
       "cognitive",
@@ -38,11 +38,11 @@ globalThis.AA_SKILLS = [
       ],
       "actions": []
     },
-    "body": "# Calm Browsing\n\nTurns a busy, animated page into a still, low-stimulation one.\n\n## What it does\n1. **motion-reducer** — stops animations, autoplaying video, GIFs, and parallax, which are common triggers for vestibular discomfort and migraine.\n2. **dark-mode** — lowers overall brightness to reduce glare.\n3. **focus-mode** — hides ads and popups to cut visual clutter (no progress spinner, which can itself cause stress).\n\n## When to use\nAny page that feels overwhelming — heavy social feeds, news sites, ad-dense pages. Safe everywhere; nothing here removes content, only movement and clutter.\n\n## Notes\n- Deliberately leaves progress indicators OFF — for sensory-sensitive users, spinners add stress rather than reassurance.\n\n## Recipe\n```json\n{\n  \"adapters\": [\n    { \"id\": \"motion-reducer\", \"settings\": { \"motionReducer\": true } },\n    { \"id\": \"dark-mode\", \"settings\": { \"darkMode\": true } },\n    { \"id\": \"focus-mode\", \"settings\": { \"focusMode\": true, \"hideDistractions\": true, \"showProgress\": false } }\n  ]\n}\n```"
+    "body": "# Calm Browsing\n\nTurns a busy, animated page into a still, low-stimulation one.\n\n## What it does\n1. **motion-reducer** — stops animations, autoplaying video, GIFs, and parallax — common triggers of vestibular discomfort and migraine.\n2. **dark-mode** — lowers overall brightness to reduce glare.\n3. **focus-mode** — hides ads and popups to cut visual clutter (no progress spinner, which can itself cause stress).\n\n## When to use\nAny page that feels overwhelming — heavy social feeds, news sites, ad-dense pages. Safe everywhere; nothing here removes content, only movement and clutter.\n\n## Notes\n- Deliberately leaves progress indicators OFF — for sensory-sensitive users, spinners add stress rather than reassurance.\n\n## Recipe\n```json\n{\n  \"adapters\": [\n    { \"id\": \"motion-reducer\", \"settings\": { \"motionReducer\": true } },\n    { \"id\": \"dark-mode\", \"settings\": { \"darkMode\": true } },\n    { \"id\": \"focus-mode\", \"settings\": { \"focusMode\": true, \"hideDistractions\": true, \"showProgress\": false } }\n  ]\n}\n```"
   },
   {
     "name": "quiet-video",
-    "description": "Makes video watchable without sound and without motion stress — captions plus reduced motion. Use for deaf/hard-of-hearing users, or anyone in a sound-off setting, on video sites.",
+    "description": "Makes video watchable without sound and without motion stress — captions plus reduced motion. Use for deaf and hard-of-hearing users, or anyone in a sound-off setting, on video sites.",
     "supportAreas": [
       "hearing",
       "sensory"
@@ -67,11 +67,11 @@ globalThis.AA_SKILLS = [
       ],
       "actions": []
     },
-    "body": "# Quiet Video\n\nAdds a visual track to video and calms the surrounding page.\n\n## What it does\n1. **captions** — generates captions for videos that lack them, so speech is readable.\n2. **motion-reducer** — stops autoplay and background animation on the page around the player, so nothing competes with the captions.\n\n## When to use\nVideo and streaming pages. Also useful for anyone watching with sound off (public spaces, shared rooms), not only deaf/HoH users.\n\n## Notes\n- Caption generation calls the AI provider on the video's audio; it may take a few seconds on first play.\n\n## Recipe\n```json\n{\n  \"adapters\": [\n    { \"id\": \"captions\", \"settings\": { \"autoCaptions\": true } },\n    { \"id\": \"motion-reducer\", \"settings\": { \"motionReducer\": true } }\n  ]\n}\n```"
+    "body": "# Quiet Video\n\nAdds a visual track to video and calms the surrounding page.\n\n## What it does\n1. **captions** — generates captions for videos that lack them, so speech becomes readable text. Captions are machine-generated; they may be wrong or incomplete.\n2. **motion-reducer** — stops autoplay and background animation on the page around the player, so nothing competes with the captions.\n\n## When to use\nVideo and streaming pages. Also useful for anyone watching with sound off (public spaces, shared rooms), not only deaf and hard-of-hearing users.\n\n## Notes\n- Caption generation calls the AI provider on the video's audio; it may take a few seconds on first play.\n- Generated captions are unvalidated and can mishear or omit speech — a person who cannot hear the audio cannot spot the errors. They are not a substitute for professionally produced captions where those exist.\n\n## Recipe\n```json\n{\n  \"adapters\": [\n    { \"id\": \"captions\", \"settings\": { \"autoCaptions\": true } },\n    { \"id\": \"motion-reducer\", \"settings\": { \"motionReducer\": true } }\n  ]\n}\n```"
   },
   {
     "name": "reading-aid",
-    "description": "Makes long text easier to read on content-heavy pages. Use for low-vision, dyslexic, or cognitively-fatigued readers on articles, news, docs, and blogs.",
+    "description": "Makes long text easier to read on content-heavy pages. Use for readers who need larger type, more spacing, or fewer distractions — including low-vision and dyslexic readers, or anyone reading while fatigued.",
     "supportAreas": [
       "vision",
       "reading",

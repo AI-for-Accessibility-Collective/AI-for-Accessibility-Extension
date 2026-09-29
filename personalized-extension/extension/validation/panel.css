@@ -42,6 +42,9 @@
   border-bottom: 1px solid #e5e5e7;
 }
 .va-ask p { margin: 0; }
+.va-ask summary,.va-back summary,.va-history summary { cursor: pointer; font-weight: 600; }
+.va-ask[open] summary { margin-bottom: 8px; }
+details.va-back,.va-history { padding: 10px 14px; }
 .va-ask .va-edit {
   margin-top: 6px;
   font-size: 12px;
@@ -52,6 +55,15 @@
   cursor: pointer;
 }
 .va-ask .va-edit:hover { color: #1858b8; text-decoration: underline; }
+
+.va-plan { padding: 10px 14px; border-bottom: 1px solid #e5e5e7; overflow-wrap: anywhere; }
+.va-plan summary { cursor: pointer; font-weight: 600; }
+.va-plan summary:focus-visible { outline: 2px solid #1a73e8; outline-offset: 3px; }
+.va-plan h3 { font-size: 12px; margin: 12px 0 4px; }
+.va-plan p { margin: 8px 0; }
+.va-plan ul { padding-left: 20px; margin: 8px 0; }
+.va-plan li { margin: 6px 0; }
+.va-plan blockquote { margin: 4px 0; padding-left: 8px; border-left: 2px solid #d1d5db; color: #6b7280; }
 
 /* ── starting ────────────────────────────────────────────────────────────── */
 /* One field. Anything more is a form, and a form asks people to know their
@@ -80,7 +92,26 @@
 }
 .va-start input:focus-visible { outline: 2px solid #1a73e8; outline-offset: 1px; }
 .va-start .va-do { margin-top: 0; white-space: nowrap; }
-.va-hint { margin: 9px 0 0; font-size: 11px; color: #9ca3af; }
+.va-hint { margin: 9px 0 0; font-size: 11px; color: #6b7280; }
+
+/* ── the switch ──────────────────────────────────────────────────────────── */
+.va-setting { padding: 14px; border-bottom: 1px solid #e5e7eb; }
+.va-setting-row { display: flex; align-items: center; gap: 8px; }
+.va-setting-row label { font-size: 13px; font-weight: 600; color: #1d1d1f; cursor: pointer; }
+.va-setting input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; flex-shrink: 0;
+  width: 34px; height: 20px; margin: 0; border-radius: 10px;
+  background: #d1d5db; position: relative; cursor: pointer; transition: background 0.2s;
+}
+.va-setting input[type="checkbox"]::before {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3); transition: transform 0.2s;
+}
+.va-setting input[type="checkbox"]:checked { background: #1a73e8; }
+.va-setting input[type="checkbox"]:checked::before { transform: translateX(14px); }
+.va-setting input[type="checkbox"]:focus-visible { outline: 2px solid #1a73e8; outline-offset: 2px; }
+.va-setting .va-hint { font-size: 12px; line-height: 1.4; }
+.va-start label { text-transform: none; letter-spacing: 0; font-size: 12px; }
 
 /* ── what wasn't said ────────────────────────────────────────────────────── */
 /* A question, not a warning. Something unspecified is normal — people do not
@@ -96,6 +127,36 @@
 .va-gap .va-text { font-weight: 500; }
 .va-gap .va-where { font-family: inherit; white-space: normal; margin-top: 2px; }
 .va-gap .va-do { margin-top: 8px; }
+
+/* ── who has the wheel ──────────────────────────────────────────────────────
+   Green, not red. The person holding a part of the task is a working state,
+   not a warning, and the gate below is the only element allowed to be loud. */
+.va-wheel {
+  margin: 8px 14px 0;
+  padding: 8px 10px;
+  border: 1px solid #a7d3bb;
+  border-radius: 8px;
+  background: #e9f5ef;
+}
+.va-wheel h2 { font-size: 12px; font-weight: 600; margin: 0 0 2px; }
+.va-wheel p { margin: 0; color: #4a5b52; }
+.va-wheel .va-answers { margin-top: 8px; }
+
+/* ── ask about this page ────────────────────────────────────────────────────
+   The one control that does not touch the agent, so it is quiet: no tone, no
+   dot, no border colour that reads as a state. */
+.va-ask-page { margin: 8px 14px 0; }
+.va-ask-page h2 { font-size: 12px; font-weight: 600; margin: 0 0 6px; }
+.va-ask-page .va-answers { display: flex; gap: 6px; }
+.va-ask-input {
+  flex: 1; min-width: 0; font: inherit; font-size: 13px;
+  padding: 5px 8px; border: 1px solid #e5e5e7; border-radius: 6px;
+}
+.va-ask-input:focus { outline: 2px solid #1a73e8; outline-offset: 1px; }
+.va-decision-answer { display: flex; gap: 6px; margin-top: 10px; }
+.va-decision-answer .va-do { min-height: 44px; }
+.va-asked { margin-top: 8px; padding-left: 8px; border-left: 2px solid #f0f0f2; }
+.va-asked .va-text { font-weight: 500; }
 
 /* ── findings ────────────────────────────────────────────────────────────── */
 .va-list { list-style: none; margin: 0; padding: 6px 0; }
@@ -138,6 +199,15 @@
   white-space: nowrap;
 }
 
+/* Which surface the finding took and why - widget, checkpoint or log, the
+   model's speak value, the trigger's verdict. Prose, not the page's words. */
+.va-surface {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #6b7280;
+  white-space: normal;
+}
+
 /* The control is the point of this surface, so it is the only thing with
    affordance. Identical to .vp-btn. */
 .va-do {
@@ -161,20 +231,20 @@
 .va-gate {
   margin: 10px 14px;
   padding: 10px 12px;
-  border: 1px solid #fca5a5;
+  border: 1px solid #e4e4e7;
   border-radius: 8px;
-  background: #fee2e2;
+  background: #fff;
 }
-.va-gate h2 { margin-bottom: 6px; color: #991b1b; }
+.va-gate h2 { margin-bottom: 6px; color: #1d1d1f; }
 .va-gate p { margin: 0 0 10px; font-weight: 500; }
 .va-answers { display: flex; gap: 8px; flex-wrap: wrap; }
-.va-answers .va-do { margin-top: 0; }
+.va-answers .va-do { margin-top: 0; min-height: 44px; padding: 9px 12px; }
 .va-do.primary {
-  background: #1a73e8;
-  border-color: #1a73e8;
+  background: #1d1d1f;
+  border-color: #1d1d1f;
   color: #fff;
 }
-.va-do.primary:hover { background: #1858b8; }
+.va-do.primary:hover { background: #000; }
 
 /* ── footer ──────────────────────────────────────────────────────────────── */
 .va-foot {
@@ -188,7 +258,7 @@
 }
 .va-foot button {
   font: inherit;
-  color: #1a73e8;
+  color: #1858b8;
   background: none;
   border: 0;
   padding: 0;
@@ -206,3 +276,27 @@
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Already waved past. Kept on screen because it is part of the record of what
+   was checked, but it stops asking. */
+.va-item.va-read { color: #555b65; }
+.va-item.va-read .va-dot { background: var(--va-muted, #9aa0a6); }
+
+/* Going back to a decision. A lookup, not an undo. */
+.va-back .va-steps { list-style: none; margin: 0; padding: 0; }
+.va-back .va-steps li { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.va-note { font-size: 12px; opacity: 0.7; margin-top: 6px; }
+
+/* Step headers: findings grouped by the task node they belong to. */
+.va-nodehead { list-style: none; margin: 10px 0 2px; padding: 0 0 2px;
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: #5f6b6a; border-bottom: 1px solid #edf0ef; }
+
+/* The run, in review: outcome first, then counted expandable groups. */
+.va-review { margin: 10px 0; padding: 10px; background: #f7faf9;
+  border: 1px solid #dbe7e4; border-radius: 8px; }
+.va-review h2 { margin: 0 0 6px; font-size: 13px; }
+.va-revgroup { margin-top: 6px; }
+.va-revgroup summary { cursor: pointer; font-weight: 500; }
+.va-revgroup summary:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
+.va-preparation, .va-completion { padding: 12px 14px; border-bottom: 1px solid #ddd; overflow-wrap: anywhere; }

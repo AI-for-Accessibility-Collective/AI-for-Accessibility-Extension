@@ -3,14 +3,23 @@
 // newTabId?} so the loop can decide whether to stop, record extracted
 // data, or update its tracked tabId.
 
-import { BH_AGENT_LOADED_SKILLS_MAX } from './constants.js';
+import { BH_AGENT_LOADED_SKILLS_MAX, BH_AGENT_ACTION_TIMEOUT_MS } from './constants.js';
+import { _bhWithActionTimeout } from './error.js';
+// What the harness indexed on this tab, so the gate can read the page's own
+// word for the element the agent is about to press.
+import { _BH_LAST_ITEMS } from '../harness/state.js';
 import {
   _bhAgentOwnedTabs,
   setTabId,
   getTabId,
+  getTaskId,
   getGroupId,
   setCreatingTab,
   getImageScale,
+  getStep,
+  shouldStop,
+  isPaused,
+  getInstructionRevision,
   pushLoadedSkill,
   shiftLoadedSkill,
   getLoadedSkills,
@@ -26,6 +35,40 @@ import { _bhAgentGroupTab } from './tabs.js';
 import { _bhAgentShowPageCursor } from './notify.js';
 
 /**
+ * What the agent is about to press, in the page's own words.
+ *
+ * The gate matches the standing rules and the committing test against the
+ * string this builds, and `action.label` — which this used to read — is not a
+ * field any action carries. There is no `label` anywhere in the action schema.
+ * So a real "Place your order" press arrived at the gate as the literal string
+ * `"click_index"`: COMMITTING did not match, `run.gate()` was never consulted,
+ * and the two rules that ship on by default and are never asked about —
+ * "never press place your order yourself" and "never press buy now" — could
+ * not fire, because they are regexes tested against that string.
+ *
+ * The harness already knows what index 42 is. `bhEnumerateInteractive` stores
+ * every item it indexed per tab in `_BH_LAST_ITEMS`, and stale-index recovery
+ * matches on the same `text` field. Reading the target's own text is what
+ * makes a rule about "place your order" mean what it says.
+ *
+ * Note this reads the PAGE's word for the element, not the agent's account of
+ * what it is doing — the same reason the layer reads the page rather than the
+ * agent everywhere else.
+ */
+function _bhDescribeTarget(tabId, action) {
+  if (action.index == null) return null;
+  try {
+    const items = _BH_LAST_ITEMS.get(tabId);
+    const it = Array.isArray(items) ? items[action.index] : null;
+    if (!it) return null;
+    // The element's own text, then its role, so a nameless button still says
+    // what kind of thing it is.
+    return [String(it.text || '').trim(), (it.attrs && it.attrs.role) || '']
+      .filter(Boolean).join(' ').slice(0, 160) || null;
+  } catch { return null; }
+}
+
+/**
  * Ask the validation layer whether this action may happen.
  *
  * The gate is checked HERE, in the executor, rather than in the model's
@@ -37,29 +80,129 @@ import { _bhAgentShowPageCursor } from './notify.js';
  * No validation run in progress means no gate — this is inert unless a task
  * has explicitly started one.
  */
-async function _bhAgentGate(action) {
+async function _bhAgentGate(tabId, action) {
   const V = globalThis.Validation;
-  if (!V || !V.isRunning()) return { allowed: true };
-  const described = [action.action, action.text, action.label, action.selector,
-                     action.url].filter(Boolean).join(' ');
+  const taskId = getTaskId();
+  if (taskId && !V?.isTaskReady?.(taskId)) {
+    return { allowed: false, fatal: true, say: 'The checks for this task are unavailable. I stopped before acting.' };
+  }
+  // ensureRunning rehydrates after a worker restart; the sync check would
+  // silently switch the whole gate off mid-task.
+  if (!V) return { allowed: true };
+  // `reason` and `key` are in here because leaving them out can only lose a
+  // match, never gain a wrong one: every term added widens what the rules can
+  // catch. `reason` is the model's own prose and is not trusted on its own —
+  // the target text above is what carries the weight.
+  const described = [action.action, _bhDescribeTarget(tabId, action), action.text,
+                     action.selector, action.url, action.key, action.reason]
+    .filter(Boolean).join(' ');
   try {
-    return await V.allow(described);
-  } catch {
-    return { allowed: true };   // never let the guard itself break a run
+    if (!(await (V.ensureRunning?.() ?? V.isRunning()))) return { allowed: true };
+    const scale = getImageScale() || 1;
+    const proposed = action.action === 'click' ? { ...action, x: action.x / scale, y: action.y / scale } : action;
+    // Started now so it runs alongside the page read beforeAction waits for;
+    // checkAction reuses it only if the read changed nothing it depends on.
+    void V.previewAction?.(tabId, proposed);
+    const fresh = await V.beforeAction?.(tabId, action.action);
+    if (fresh?.allowed === false) return fresh;
+    // The step goes with it so the layer can file this action under the point
+    // in the run it happened at. Without it the trace has actions in it and no
+    // way to line them up against the steps the agent reports.
+    const verdict = await V.allow(described, { step: getStep(), action: action.action });
+    if (!verdict.allowed) return verdict;
+    return await V.checkAction?.(tabId, proposed) || verdict;
+  } catch (e) {
+    console.error('[BrowserAgent] action check failed', e);
+    return { allowed: false, fatal: true, say: 'I could not check this action. I stopped before changing the page.' };
   }
 }
 
-export async function _bhAgentExec(tabId, action, task) {
-  const H = globalThis.BrowserHarness;
+/** How long to sit on a hold before giving up, and how often to look. */
+const HELD_POLL_MS = 1_500;
+const HELD_GIVE_UP_MS = 300_000;
 
-  const gate = await _bhAgentGate(action);
+/**
+ * Sit still while the person is being waited on.
+ *
+ * Telling the model "do not retry this step" and handing control back does not
+ * work: it is a request, and the model answers it by trying something else,
+ * which is blocked too. A recorded run held at step 26 and then spent 24 more
+ * steps and four minutes issuing actions that were all refused, one full model
+ * turn each, until the layer's own timeout ended the run. Waiting is the
+ * agent's job here, so the loop does it rather than asking the model to.
+ *
+ * The ceiling sits just past the layer's own hold timeout, which stops the run
+ * and is the thing that normally ends this wait.
+ */
+async function _bhWaitWhileHeld(signal) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < HELD_GIVE_UP_MS) {
+    if (signal?.aborted || shouldStop()) return false;
+    await new Promise((resolve) => {
+      const finish = () => { clearTimeout(timer); signal?.removeEventListener('abort', finish); resolve(); };
+      const timer = setTimeout(finish, HELD_POLL_MS);
+      signal?.addEventListener('abort', finish, { once: true });
+    });
+    if (signal?.aborted || shouldStop()) return false;
+    await globalThis.Validation?.tick?.();
+    // The run being stopped underneath us — by the hold timing out, or by the
+    // person — ends the wait rather than outliving it.
+    if (globalThis.Validation && !globalThis.Validation.isRunning()) return false;
+    try {
+      const s = (await chrome.storage.local.get('aa.validation'))['aa.validation'];
+      if (!s || !s.gate || s.gate.allowed !== false) return true;
+    } catch { return true; }   // cannot read the gate: stop waiting, re-ask it
+  }
+  return false;
+}
+
+export async function _bhAgentExec(tabId, action, task, opts = {}) {
+  const revision = opts.revision ?? getInstructionRevision();
+  const obsolete = () => opts.signal?.aborted || shouldStop() || isPaused()
+    || revision !== getInstructionRevision();
+  if (obsolete()) return { keepGoing: true, replan: true };
+  const gate = await _bhAgentGate(tabId, action);
+  if (obsolete()) return { keepGoing: true, replan: true };
+  if (gate.fatal) return { keepGoing: false, stopped: true, summary: gate.say };
+  if (gate.replan) return { keepGoing: true, replan: true };
   if (!gate.allowed) {
     _bhAgentLog({ kind: 'action', action: 'blocked',
                   detail: `held: ${(gate.waitingOn || []).join(', ')}` });
-    return { keepGoing: true,
-             summary: `Held. ${gate.say || 'Waiting on the person.'} ` +
-                      `Do not retry this step; wait for their answer.` };
+    const cleared = await _bhWaitWhileHeld(opts.signal);
+    // Discard this action and let the next agent turn use the person's answer.
+    // Every newly proposed action still goes through the gate.
+    if (!cleared) {
+      return { keepGoing: false, stopped: true,
+               summary: `Stopped. ${gate.say || 'Waiting on the person, and nothing was answered.'}` };
+    }
+    _bhAgentLog({ kind: 'action', action: 'resumed', detail: 'the person answered' });
+    return { keepGoing: true, replan: true };
   }
+
+  if (obsolete()) return { keepGoing: true, replan: true };
+  // Human waiting is outside the action timeout. Never replay a held action.
+  return _bhWithActionTimeout(action.action, opts.timeoutMs ?? BH_AGENT_ACTION_TIMEOUT_MS,
+    async signal => {
+      if (signal?.aborted || obsolete()) return { keepGoing: true, replan: true };
+      const binding = gate.binding;
+      const V = globalThis.Validation, H = globalThis.BrowserHarness;
+      if (binding) {
+        if (!V.isActionBindingCurrent(binding)) return { keepGoing: true, replan: true };
+        if (['click','click_index'].includes(action.action)) {
+          await H.activateVerifiedTarget(tabId, binding, () => !obsolete() && V.isActionBindingCurrent(binding));
+          await V.didPerformAction(binding);
+          return { keepGoing: true };
+        }
+        const target = await H.describeActionTarget(tabId, binding.action);
+        if (!V.isActionBindingCurrent(binding) || obsolete()
+          || JSON.stringify(target) !== JSON.stringify(binding.target)) return { keepGoing: true, replan: true };
+      }
+      return _bhPerformAgentAction(tabId, action, task, binding ? { _recovered: true } : {});
+    });
+}
+
+async function _bhPerformAgentAction(tabId, action, task, verifiedOpts = {}) {
+  const H = globalThis.BrowserHarness;
 
   switch (action.action) {
     case 'click': {
@@ -145,7 +288,7 @@ export async function _bhAgentExec(tabId, action, task) {
         throw new Error('type_index: missing or invalid `index`');
       }
       const text = (typeof action.text === 'string') ? action.text : '';
-      const result = await H.typeIndex(tabId, idx, text, { clear: action.clear !== false });
+      const result = await H.typeIndex(tabId, idx, text, { ...verifiedOpts, clear: action.clear !== false });
       const recovered = (result.recoveredFromIdx !== undefined)
         ? ` (recovered ${result.recoveredFromIdx}→${result.recoveredToIdx})` : '';
       await _bhAgentLog({
@@ -162,7 +305,7 @@ export async function _bhAgentExec(tabId, action, task) {
       }
       const files = Array.isArray(action.files) ? action.files : (action.file ? [action.file] : []);
       if (!files.length) throw new Error('upload_file: missing `file` (string) or `files` (array)');
-      const result = await H.uploadFileIndex(tabId, idx, files);
+      const result = await H.uploadFileIndex(tabId, idx, files, verifiedOpts);
       await _bhAgentLog({ kind: 'info', text: `upload_file[${idx}] ← ${result.files.join(', ')}.` });
       return { keepGoing: true };
     }
@@ -191,7 +334,7 @@ export async function _bhAgentExec(tabId, action, task) {
       }
       const text = (typeof action.text === 'string') ? action.text : '';
       if (!text) throw new Error('select_dropdown: missing `text`');
-      const result = await H.selectDropdown(tabId, idx, text);
+      const result = await H.selectDropdown(tabId, idx, text, verifiedOpts);
       await _bhAgentLog({
         kind: 'info',
         text: `select_dropdown[${idx}] (${result.kind}) ← ${JSON.stringify(text)} → ${JSON.stringify(result.selectedText || '')}.`,
@@ -357,6 +500,16 @@ export async function _bhAgentExec(tabId, action, task) {
       await H.handleDialog(tabId, action.accept !== false, action.prompt_text ?? null);
       await H.wait(200);
       return { keepGoing: true };
+    }
+    case 'read': {
+      const snapshot = await H.axSnapshot(tabId);
+      const source = action.content === 'links'
+        ? (snapshot.links || []).map(l => `${l.label}\n${l.href}`).join('\n\n') : snapshot.text;
+      const offset = Number.isSafeInteger(action.offset) && action.offset > 0 ? action.offset : 0;
+      const length = 6000;
+      return { keepGoing: true, extracted: { url: snapshot.url, content: action.content === 'links' ? 'links' : 'text',
+        offset, text: source.slice(offset, offset + length),
+        nextOffset: offset + length < source.length ? offset + length : null, totalCharacters: source.length } };
     }
     case 'js': {
       if (!action.code || typeof action.code !== 'string') {

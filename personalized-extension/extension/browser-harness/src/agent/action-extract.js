@@ -12,9 +12,14 @@ export function _bhAgentParseAction(text) {
     s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
   }
   try {
-    return JSON.parse(s);
+    const response = JSON.parse(s);
+    const actions = Array.isArray(response?.actions) && response.actions.length ? response.actions : [response];
+    if (actions.some(a => a?.action === 'done' && (typeof a.summary !== 'string' || !a.summary.trim()))) {
+      throw new Error('done requires a nonempty summary containing the answer for the person. Internal memory is not a final response.');
+    }
+    return response;
   } catch (e) {
-    const err = new Error(`response was not valid JSON: ${e.message}`);
+    const err = new Error(`invalid action response: ${e.message}`);
     err.rawText = text;
     throw err;
   }

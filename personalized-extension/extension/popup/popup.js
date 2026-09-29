@@ -1423,12 +1423,32 @@ function setupAgentPanel() {
 
   let lastDoneTask = null;
 
+  // The one setting for checking the agent's work, shared with the side panel.
+  const checkToggle = document.getElementById('agentCheckToggle');
+  const checkHint = document.getElementById('agentCheckHint');
+  const showCheck = (on) => {
+    checkToggle.checked = on;
+    checkHint.textContent = on
+      ? 'On. It asks you before choices and holds payments and sends for your OK. Tasks take about 15 seconds longer to start.'
+      : 'Off. The agent works on its own.';
+  };
+  if (checkToggle) {
+    chrome.storage.sync.get('verificationLayer', (d) => showCheck(d.verificationLayer === true));
+    checkToggle.addEventListener('change', () => {
+      chrome.storage.sync.set({ verificationLayer: checkToggle.checked });
+      showCheck(checkToggle.checked);
+    });
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'sync' && changes.verificationLayer) showCheck(changes.verificationLayer.newValue === true);
+    });
+  }
+
   function renderAgent(state) {
     const s = state || { status: 'idle', log: [] };
-    statusEl.textContent = s.status || 'idle';
+    statusEl.textContent = s.status === 'preparing' ? 'getting ready' : (s.status || 'idle');
     statusEl.dataset.status = s.status || 'idle';
 
-    const running = s.status === 'running';
+    const running = s.status === 'running' || s.status === 'preparing';
     runBtn.hidden = running;
     stopBtn.hidden = !running;
     runBtn.disabled = running;

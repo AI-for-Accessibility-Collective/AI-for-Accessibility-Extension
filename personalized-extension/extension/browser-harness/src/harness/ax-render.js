@@ -33,6 +33,7 @@ export function axProp(node, name) {
  */
 export function bhRenderAx(nodes, opts = {}) {
   const { url = null, maxDepth = 40 } = opts;
+  const excluded = new Set(opts.excludeBackendNodeIds || []);
   if (!nodes || !nodes.length) return url ? `URL: ${url}\n` : '';
 
   const byId = new Map(nodes.map((n) => [n.nodeId, n]));
@@ -42,14 +43,24 @@ export function bhRenderAx(nodes, opts = {}) {
 
   const walk = (node, depth) => {
     if (!node || depth > maxDepth) return;
+    if (excluded.has(node.backendDOMNodeId)) return;
     const role = val(node.role);
     const name = val(node.name);
     const skip = node.ignored === true || !role || SKIP_ROLES.has(role);
 
     if (!skip) {
-      const level = axProp(node, 'level');
-      const suffix = level !== undefined ? ` [level=${level}]` : '';
-      const text = name ? ` "${name}"` : '';
+      const attributes = [];
+      const value = val(node.value);
+      if (value !== undefined && value !== null) {
+        attributes.push(`value=${JSON.stringify(axProp(node, 'protected') ? '••••' : value)}`);
+      }
+      for (const property of ['level', 'checked', 'selected', 'pressed', 'expanded',
+        'disabled', 'required', 'invalid', 'multiselectable', 'valuemin', 'valuemax', 'valuetext']) {
+        const value = axProp(node, property);
+        if (value !== undefined && value !== null) attributes.push(`${property}=${JSON.stringify(value)}`);
+      }
+      const suffix = attributes.map((a) => ` [${a}]`).join('');
+      const text = name ? ` ${JSON.stringify(String(name))}` : '';
       out.push(`${'  '.repeat(depth)}- ${role}${text}${suffix}`);
     }
     for (const id of node.childIds || []) {

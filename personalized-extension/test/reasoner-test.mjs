@@ -1,0 +1,647 @@
+// The reasoner, against a recorded page and the real task model.
+//
+// No network. The model call is stubbed, so what is exercised here is the part
+// that decides whether a claim reaches a person: flattening the task model,
+// the page-size guard, parsing a response that may be cut off, verifying every
+// quote by containment, and turning what survived into findings the rest of
+// the layer already knows how to render.
+//
+// The assertion that matters most is the fabricated quote. An answer whose
+// words are not on the page is thrown away and counted, and no wording,
+// confidence or plausibility gets it through.
+//
+// Run: node test/reasoner-test.mjs
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import assert from 'node:assert';
+import * as R from '../extension/validation/reasoner.js';
+import { createRun } from '../extension/validation/run.js';
+import { researchDir } from './research-dir.mjs';
+
+const RESEARCH = researchDir('reasoner-test');
+const PAGE = readFileSync(join(RESEARCH, 'assets/task-mapping/_obs/sandals-step2.txt'), 'utf8');
+const GOLD = JSON.parse(readFileSync(join(RESEARCH, 'taskmodel/gold-v2/amazon-gold.json'), 'utf8'));
+
+let n = 0;
+const check = async (name, fn) => { n += 1; await fn(); console.log(`PASS ${name}`); };
+
+// ── the task model ──────────────────────────────────────────────────────────
+
+const flat = R.flattenModel(GOLD);
+
+await check('the real gold flattens to every question on every node', () => {
+  assert.strictEqual(flat.questions.length, 64);
+  assert.strictEqual(flat.nodeIds.length, 75);
+  assert.strictEqual(flat.phases.length, 10);
+  assert.ok(flat.task.startsWith('buy a physical product on Amazon'));
+});
+
+await check('every question id is unique, so none is silently dropped', () => {
+  const ids = flat.questions.map((q) => q.id);
+  assert.strictEqual(new Set(ids).size, ids.length);
+});
+
+// The Amazon gold happens to carry one question per node. Flights does not —
+// its busiest node holds nine — and keying answers by bare node id, which the
+// benchmarked prototype did, drops eight of them without saying so.
+await check('a node holding several questions keeps them all, suffixed', () => {
+  const flights = R.flattenModel(JSON.parse(
+    readFileSync(join(RESEARCH, 'taskmodel/gold-v2/flights-gold.json'), 'utf8')));
+  const per = {};
+  for (const q of flights.questions) per[q.node] = (per[q.node] || 0) + 1;
+  const busiest = Object.entries(per).sort((a, b) => b[1] - a[1])[0];
+  assert.ok(busiest[1] > 1, 'flights has a node with more than one question');
+  const theirs = flights.questions.filter((q) => q.node === busiest[0]).map((q) => q.id);
+  assert.strictEqual(theirs.length, busiest[1]);
+  assert.strictEqual(new Set(theirs).size, theirs.length);
+  assert.ok(theirs.every((id) => id.startsWith(`${busiest[0]}#`)));
+  assert.strictEqual(new Set(flights.questions.map((q) => q.id)).size,
+                     flights.questions.length);
+});
+
+await check('a bare tree is accepted as well as a whole file', () => {
+  assert.strictEqual(R.flattenModel(GOLD.tree).questions.length, 64);
+});
+
+// ── the page-size guard ─────────────────────────────────────────────────────
+
+await check('a page under the limit goes through untouched', () => {
+  const g = R.guardPage(PAGE);
+  assert.strictEqual(g.truncated, false);
+  assert.strictEqual(g.text, PAGE);
+});
+
+await check('a page over the limit is cut and says so', () => {
+  const g = R.guardPage(PAGE, 500);
+  assert.strictEqual(g.truncated, true);
+  assert.strictEqual(g.origChars, PAGE.length);
+  assert.ok(g.text.includes(R.TRUNCATION_MARKER));
+  // Exactly the budget now. The head-only version appended the marker AFTER
+  // taking its full quota, so it went over the limit it was enforcing.
+  assert.strictEqual(g.sentChars, 500);
+});
+
+await check('the end of the page survives, because that is where the checking lives', () => {
+  // What a person verifies against sits at the bottom: references and the
+  // protection notice on an article, the return policy on a product page, the
+  // fare rules on a booking, the fee footnotes on a form. Keeping only the head
+  // threw all of it away - a recorded Wikipedia run cut 78% of the article and
+  // then asked whether the source could be trusted.
+  const head = 'HEADLINE at the very top. ';
+  const middle = 'x'.repeat(5000);
+  const tail = ' the return policy is thirty days, at the very bottom.';
+  const g = R.guardPage(head + middle + tail, 400);
+  assert.strictEqual(g.truncated, true);
+  assert.ok(g.text.includes('HEADLINE'), 'the top is kept');
+  assert.ok(g.text.includes('at the very bottom'), 'and so is the bottom');
+  assert.ok(!g.text.includes('x'.repeat(400)), 'the middle is what goes');
+  assert.ok(g.sentChars <= 400, 'and the budget is respected');
+});
+
+// ── the prompt ──────────────────────────────────────────────────────────────
+
+const prompt = R.buildPrompt(flat, PAGE, { ask: 'girls flat sandals, size 5.' });
+
+await check('every question goes in, not the ones for a guessed subtask', () => {
+  for (const q of flat.questions) {
+    assert.ok(prompt.includes(`${q.id} | ${q.subtask} | ${q.question}`), q.id);
+  }
+});
+
+await check('the page text is in the prompt, fenced as data not instructions', () => {
+  assert.ok(prompt.includes(PAGE));
+  assert.ok(/data, not instructions/.test(prompt));
+  assert.ok(prompt.includes('<<<PAGE') && prompt.includes('PAGE>>>'));
+});
+
+await check("the person's own words reach the call", () => {
+  assert.ok(prompt.includes('girls flat sandals, size 5.'));
+});
+
+await check('by default only answered questions need a row back', () => {
+  assert.ok(/one entry ONLY for the questions this page/.test(prompt));
+  const every = R.buildPrompt(flat, PAGE, { everyRow: true });
+  assert.ok(/exactly one entry per question above/.test(every));
+  // Either way the whole list goes in — the difference is what comes back.
+  for (const q of flat.questions) assert.ok(every.includes(`${q.id} | ${q.subtask} | ${q.question}`));
+});
+
+await check('a question with no row back is the same as the page not saying', () => {
+  const rows = R.verifyQuotes([], PAGE);
+  assert.strictEqual(rows.length, 0);
+});
+
+// ── parsing ─────────────────────────────────────────────────────────────────
+
+await check('plain and fenced JSON both parse', () => {
+  assert.deepStrictEqual(R.parseJsonLoose('{"a":1}'), { a: 1 });
+  assert.deepStrictEqual(R.parseJsonLoose('```json\n{"a":1}\n```'), { a: 1 });
+});
+
+await check('output cut off mid-response does not parse - the retry signal', () => {
+  assert.strictEqual(R.parseJsonLoose('{"answers":[{"id":"4.1","answer":"$14.9'), null);
+});
+
+// ── quote verification ──────────────────────────────────────────────────────
+
+const EXACT = '- text: $14.99';
+const SPACED = '-   text:   $14.99';          // same words, different whitespace
+const FABRICATED = '- text: $9.99 limited time offer';
+
+await check('a quote copied off the page verifies exactly', () => {
+  assert.ok(PAGE.includes(EXACT));
+  assert.strictEqual(R.verifyQuote(EXACT, PAGE), 'verified_exact');
+});
+
+await check('the same words with different spacing verify after collapse', () => {
+  assert.ok(!PAGE.includes(SPACED));
+  assert.strictEqual(R.verifyQuote(SPACED, PAGE), 'verified_normalized');
+});
+
+await check('a fabricated quote is rejected', () => {
+  assert.strictEqual(R.verifyQuote(FABRICATED, PAGE), 'hallucinated_quote');
+});
+
+await check('an answer with no quote at all is rejected too', () => {
+  assert.strictEqual(R.verifyQuote('', PAGE), 'missing_quote');
+  assert.strictEqual(R.verifyQuote(null, PAGE), 'missing_quote');
+});
+
+await check('an honest absence is null, not a sentence saying it is absent', () => {
+  const [a, b] = R.verifyQuotes(
+    [{ answer: null, quote: null }, { answer: 'the page does not say', quote: null }], PAGE);
+  assert.strictEqual(a.verify, 'null');
+  assert.strictEqual(b.verify, 'null');
+  assert.strictEqual(b.answer, null);
+  assert.strictEqual(a.verifyLevel, null);
+});
+
+// ── the normalization levels ────────────────────────────────────────────────
+//
+// Plain containment threw away eight correct answers across the 90 benchmark
+// calls, every one of them a punctuation or invisible-character mismatch
+// between what the accessibility dump wrote and what the model could copy.
+// Each level below is one of those failures, taken off the page it happened on.
+// The level a quote matches at is recorded, so a quote that needed cleaning
+// never passes for one that was copied exactly.
+
+const SEARCH = readFileSync(join(RESEARCH, 'assets/task-mapping/_obs/sandals-step1.txt'), 'utf8');
+const GMAIL = readFileSync(join(RESEARCH, 'assets/task-mapping/_obs/email-confirm-gmail-aria.txt'), 'utf8');
+const ORDER = 'Arriving tomorrow David - MENLO PARK, CA Order # ';
+
+await check('exact still means exact, and says so', () => {
+  assert.deepStrictEqual(R.verifyQuoteAt(EXACT, PAGE),
+                         { verify: 'verified_exact', level: 'exact' });
+});
+
+await check('whitespace: the same words spaced differently', () => {
+  assert.deepStrictEqual(R.verifyQuoteAt(SPACED, PAGE),
+                         { verify: 'verified_normalized', level: 'whitespace' });
+});
+
+await check('unicode: an invisible character the model cannot copy', () => {
+  // The Gmail confirmation carries U+202B inside the order number. A model
+  // reading the page has nothing to copy there.
+  assert.ok(GMAIL.includes(`${ORDER}‫113-2116825-7916228`));
+  assert.deepStrictEqual(R.verifyQuoteAt(`${ORDER}113-2116825-7916228`, GMAIL),
+                         { verify: 'verified_normalized', level: 'unicode' });
+});
+
+await check('unescape: the dump writes an inner quote as backslash-quote', () => {
+  const dumped = '- link "Sponsored ad from DREAM PAIRS. \\"Dress sandals for girls.\\" Shop DREAM PAIRS.":';
+  const copied = 'Sponsored ad from DREAM PAIRS. "Dress sandals for girls." Shop DREAM PAIRS.';
+  assert.ok(SEARCH.includes(dumped));
+  assert.ok(!SEARCH.includes(copied));
+  assert.deepStrictEqual(R.verifyQuoteAt(copied, SEARCH),
+                         { verify: 'verified_normalized', level: 'unescape' });
+});
+
+await check('quotes: the dump wraps the label, the model copies the label', () => {
+  assert.ok(PAGE.includes('- \'link "Brand: WUROSO"\':'));
+  assert.deepStrictEqual(R.verifyQuoteAt('link "Brand: WUROSO":', PAGE),
+                         { verify: 'verified_normalized', level: 'quotes' });
+});
+
+await check('ellipsis: a placeholder for a character that would not render', () => {
+  // This one call lost six correct answers about the same order number.
+  assert.deepStrictEqual(R.verifyQuoteAt(`${ORDER}…113-2116825-7916228`, GMAIL),
+                         { verify: 'verified_normalized', level: 'ellipsis' });
+  assert.deepStrictEqual(R.verifyQuoteAt(`${ORDER}...113-2116825-7916228`, GMAIL),
+                         { verify: 'verified_normalized', level: 'ellipsis' });
+});
+
+await check('a fabricated quote is still rejected after every level', () => {
+  // One digit of the order number changed, wearing the ellipsis that rescues
+  // the real one.
+  assert.strictEqual(R.verifyQuote(`${ORDER}…113-2116825-7916229`, GMAIL),
+                     'hallucinated_quote');
+  // A made-up brand, wearing the quoting that rescues the real label.
+  assert.strictEqual(R.verifyQuote('link "Brand: NOTWUROSO":', PAGE),
+                     'hallucinated_quote');
+  // Same digits, different currency. Nothing deletes a currency symbol.
+  assert.strictEqual(R.verifyQuote('- text: €14.99', PAGE), 'hallucinated_quote');
+  // An extra clause bolted onto real page text.
+  assert.strictEqual(R.verifyQuote(`${EXACT} limited time offer`, PAGE),
+                     'hallucinated_quote');
+});
+
+await check('an ellipsis is deleted, never expanded — it cannot bridge a gap', () => {
+  // Both ends are real page text. The words between them are not being
+  // claimed, they are being skipped, and skipping is what a fuzzy match would
+  // allow and containment must not.
+  assert.ok(GMAIL.includes('Arriving tomorrow David'));
+  assert.ok(GMAIL.includes('7916228'));
+  assert.strictEqual(R.verifyQuote('Arriving tomorrow David …7916228', GMAIL),
+                     'hallucinated_quote');
+  assert.strictEqual(R.verifyQuote('Arriving tomorrow David ...7916228', GMAIL),
+                     'hallucinated_quote');
+});
+
+await check('the level is recorded on the row, next to the verdict', () => {
+  const rows = R.verifyQuotes([
+    { answer: '$14.99', quote: EXACT },
+    { answer: 'WUROSO', quote: 'link "Brand: WUROSO":' },
+    { answer: '$9.99', quote: FABRICATED },
+  ], PAGE);
+  assert.deepStrictEqual(rows.map((r) => r.verifyLevel), ['exact', 'quotes', null]);
+  assert.deepStrictEqual(rows.map((r) => R.isVerified(r.verify)), [true, true, false]);
+});
+
+await check('a noticed item carries its level too', () => {
+  const [n1] = R.verifyNoticed([{ what: 'brand', quote: 'link "Brand: WUROSO":' }], PAGE);
+  assert.strictEqual(n1.verify, 'verified_normalized');
+  assert.strictEqual(n1.verifyLevel, 'quotes');
+});
+
+// ── one whole read, with the call stubbed ───────────────────────────────────
+
+const Q = flat.questions;
+const qPrice = Q.find((q) => /price/i.test(q.question)) || Q[0];
+const qOther = Q.find((q) => q.id !== qPrice.id);
+const NOTICED_QUOTE = '- button "FREE Returns"';
+
+function response({ price = EXACT, other = FABRICATED, noticed = NOTICED_QUOTE } = {}) {
+  return JSON.stringify({
+    alignedPhase: 'Inspect the item',
+    alignedNodes: ['4', qPrice.node, 'not-a-node'],
+    answers: [
+      { id: qPrice.id, answer: '$14.99', quote: price, confidence: 0.9 },
+      { id: qOther.id, answer: 'it is $9.99 with a limited-time offer',
+        quote: other, confidence: 0.9 },
+    ],
+    noticed: [{ what: 'Returns are free on this item', quote: noticed,
+                whyItMatters: 'it decides how reversible buying it is' }],
+  });
+}
+
+/** Replace the model caller with a canned sequence. Returns the call log. */
+function stub(sequence) {
+  const seq = sequence.slice();
+  const calls = [];
+  R.setGeminiCaller(async (p, opts) => {
+    calls.push({ prompt: p, opts });
+    const next = seq.length > 1 ? seq.shift() : seq[0];
+    if (next instanceof Error) throw next;
+    return next;
+  });
+  return calls;
+}
+
+const calls = stub([response()]);
+const result = await R.readPage(flat, PAGE);
+
+await check('the call asks for structured output with a declared cap', () => {
+  assert.strictEqual(calls[0].opts.mimeType, 'application/json');
+  assert.strictEqual(calls[0].opts.responseSchema, R.SCHEMA);
+  assert.strictEqual(calls[0].opts.maxOutputTokens, R.MAX_OUTPUT_TOKENS);
+});
+
+await check('every question comes back with a row, answered or null', () => {
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.answers.length, flat.questions.length);
+  assert.strictEqual(result.meta.asked, flat.questions.length);
+});
+
+await check('the verified answer is kept and the fabricated one is discarded', () => {
+  const good = result.answers.find((a) => a.id === qPrice.id);
+  const bad = result.answers.find((a) => a.id === qOther.id);
+  assert.strictEqual(good.verify, 'verified_exact');
+  assert.strictEqual(bad.verify, 'hallucinated_quote');
+  assert.strictEqual(result.meta.answered, 1);
+  assert.strictEqual(result.meta.discarded, 1);
+});
+
+await check('alignment is reported, and only for nodes the model actually has', () => {
+  assert.ok(result.alignedNodes.includes('4'));
+  assert.ok(!result.alignedNodes.includes('not-a-node'));
+  assert.ok(result.alignedNodes.every((id) => flat.nodeIds.includes(id)));
+});
+
+await check('the noticing pass is verified like everything else', () => {
+  assert.strictEqual(result.noticed[0].verify, 'verified_exact');
+  assert.strictEqual(result.meta.noticedKept, 1);
+});
+
+await check('a noticed item with a fabricated quote is thrown away too', async () => {
+  stub([response({ noticed: 'Free returns for life on all orders' })]);
+  const r = await R.readPage(flat, PAGE);
+  assert.strictEqual(r.noticed[0].verify, 'hallucinated_quote');
+  assert.strictEqual(r.meta.noticedKept, 0);
+  assert.strictEqual(r.meta.noticedDiscarded, 1);
+  assert.strictEqual(R.toFindings(r, 'Inspect the item')
+    .filter((f) => f.source === 'noticed').length, 0);
+});
+
+// ── findings ────────────────────────────────────────────────────────────────
+
+const phase = R.phaseFor(result, flat);
+const findings = R.toFindings(result, phase);
+
+await check('the phase comes from the model, not from a URL regex', () => {
+  assert.ok(flat.phases.includes(phase));
+  assert.strictEqual(phase, 'Inspect the item');
+});
+
+await check('the fabricated answer never becomes a finding', () => {
+  assert.ok(!findings.some((f) => /9\.99/.test(f.say)));
+  assert.ok(!findings.some((f) => f.widget === qOther.question));
+});
+
+await check('the verified answer becomes a finding in the checks own shape', () => {
+  const f = findings.find((x) => x.widget === qPrice.question);
+  assert.ok(f, 'the verified answer is a finding');
+  assert.strictEqual(f.phase, phase);
+  assert.ok(f.say.includes('$14.99'));
+  assert.strictEqual(f.from, EXACT);        // the quote is the provenance line
+  assert.strictEqual(f.contradicts, false);
+  assert.strictEqual(f.confirming, false);
+  assert.strictEqual(f.paradigm, null);
+  assert.strictEqual(f.answerable, true);
+  assert.strictEqual(f.node, qPrice.node);
+});
+
+await check('a control is offered only for an interface type that has one', () => {
+  for (const f of findings) {
+    if (!f.control) continue;
+    assert.ok(f.control.label && f.control.action && f.control.decline);
+  }
+});
+
+await check('the noticing pass reaches the person as a finding with its quote', () => {
+  const f = findings.find((x) => x.source === 'noticed');
+  assert.ok(f && f.from === NOTICED_QUOTE);
+});
+
+await check('what the page is serving is ordered first', () => {
+  const firstUnaligned = findings.findIndex((f) => !f.aligned);
+  const lastAligned = findings.map((f) => f.aligned).lastIndexOf(true);
+  if (firstUnaligned >= 0 && lastAligned >= 0) assert.ok(lastAligned < firstUnaligned);
+});
+
+// ── into the run the rest of the layer already uses ─────────────────────────
+
+const synthetic = (over) => ({
+  widget: 'Q', phase: 'Inspect the item', say: 'What does it cost? It is $14.99.',
+  from: EXACT, answerable: true, contradicts: false, confirming: false,
+  control: null, quiet: false, moment: 'Now', ...over,
+});
+
+await check('findings go through the run, get a level, and are spoken', () => {
+  const r = createRun({ item: 'girls sandals' });
+  const { findings: rendered } = r.observeFindings(
+    [synthetic()], 'Inspect the item', { read: 1, of: 1 });
+  assert.strictEqual(rendered.length, 1);
+  assert.strictEqual(rendered[0].level, 'aside');
+  assert.ok(rendered[0].spoken.speak.includes('$14.99'));
+  assert.ok(rendered[0].visual.text);
+  assert.strictEqual(r.summary().steps[0].what, 'Inspect the item');
+});
+
+await check('a question the model wants on demand is never announced', () => {
+  const r = createRun({ item: 'girls sandals' });
+  const { findings: rendered } = r.observeFindings(
+    [synthetic({ widget: 'Q2', phase: 'After the order', quiet: true, moment: 'On demand' })],
+    'After the order', { read: 1, of: 1 });
+  assert.strictEqual(rendered[0].level, 'ambient');
+  assert.strictEqual(rendered[0].spoken.speak, null);
+  assert.strictEqual(r.gate().allowed, true);
+});
+
+await check('the plan reports discarded answers as things it could not read', () => {
+  const r = createRun({ item: 'girls sandals' });
+  const read = result.meta.answered + result.meta.noticedKept;
+  r.observeFindings(findings, phase, { read, of: read + result.meta.discarded });
+  const step = r.summary().steps.find((s) => s.what === phase);
+  assert.ok(/1 thing here I couldn't read/.test(step.detail), step.detail);
+});
+
+// ── failures are failures, never a page that checked out clean ──────────────
+
+await check('unparseable output is retried, and a later good response wins', async () => {
+  const c = stub(['{"answers":[{"id":"1.1","answer":"cut off mid-', response()]);
+  const r = await R.readPage(flat, PAGE);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.meta.attempts, 2);
+  assert.strictEqual(c.length, 2);
+});
+
+await check('reader retries use only the remaining time budget', async () => {
+  const originalNow=Date.now;
+  let now=1000;const timeouts=[];
+  try {
+    Date.now=()=>now;
+    R.setGeminiCaller(async(_prompt,opts)=>{
+      timeouts.push(opts.timeoutMs);
+      if(timeouts.length===1){now+=45000;throw new Error('temporary timeout');}
+      return response();
+    });
+    const r=await R.readPage(flat,PAGE,{budgetMs:75000,timeoutMs:45000});
+    assert.equal(r.ok,true);
+    assert.deepEqual(timeouts,[45000,30000]);
+  } finally { Date.now=originalNow; }
+});
+
+await check('output that never parses gives up and says so', async () => {
+  stub(['{"answers":[{"id":"1.1","answer":"cut off mid-']);
+  const r = await R.readPage(flat, PAGE);
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.meta.attempts, R.MAX_ATTEMPTS);
+  assert.ok(/unparseable/.test(r.meta.error));
+  assert.strictEqual(r.answers.length, 0);
+});
+
+await check('a thrown call is reported, not swallowed into an empty page', async () => {
+  stub([new Error('Gemini API error 429: rate limited')]);
+  const r = await R.readPage(flat, PAGE);
+  assert.strictEqual(r.ok, false);
+  assert.ok(/429/.test(r.meta.error));
+});
+
+await check('no caller wired up is an honest failure, not silence', async () => {
+  R.setGeminiCaller(null);
+  const r = await R.readPage(flat, PAGE);
+  assert.strictEqual(r.ok, false);
+  assert.ok(/no model caller/.test(r.meta.error));
+});
+
+await check('quotes are checked against the text the model saw, not the file', async () => {
+  // The price line sits well past the first 200 characters, so under a
+  // 200-character guard the model cannot have seen it and the quote must fail.
+  stub([response()]);
+  const r = await R.readPage(flat, PAGE, { maxPageChars: 200 });
+  assert.strictEqual(r.meta.guard.truncated, true);
+  assert.strictEqual(r.answers.find((x) => x.id === qPrice.id).verify,
+                     'hallucinated_quote');
+});
+
+// A quote that empties out under a normalization step used to match EVERY
+// page, because `'anything'.includes('')` is true. Each of these passed against
+// an unrelated page, at whichever step emptied it. The bare ellipsis is the one
+// that mattered: the comment above ELLIPSIS records that the model demonstrably
+// writes one when it cannot render a character, so this was the likely shape of
+// a fabrication rather than an exotic one.
+await check('a quote with nothing but punctuation in it is not evidence', async () => {
+  const page = 'heading "Order placed"\n  text "Total $16.52"';
+  for (const q of ['\u180e', '\u200b', '\\n', '\u2026', '"', '  ', '...']) {
+    const v = R.verifyQuoteAt(q, page);
+    assert.ok(!String(v.verify).startsWith('verified'),
+      `${JSON.stringify(q)} verified against a page it is not in, at level ${v.level}`);
+  }
+});
+
+await check('the rescues it was loosened for still work', async () => {
+  const page = 'heading "Order placed"\n  text "Total $16.52"';
+  for (const q of ['Total $16.52', 'Total  $16.52', '"Total $16.52"']) {
+    assert.ok(String(R.verifyQuoteAt(q, page).verify).startsWith('verified'),
+      `${JSON.stringify(q)} should still verify`);
+  }
+});
+
+console.log(`\n${n}/${n} - a fabricated quote never reaches a person.`);
+
+await check('invented answer URLs fail even when the model would approve them', async () => {
+  let called = 0;
+  R.setGeminiCaller(async () => { called++; return JSON.stringify({checks:[{id:'task',status:'complete',quote:'Olio £23.88',sourceId:'current',reason:'Matched book.'}]}); });
+  const context={request:'Report the book price with its source.',goals:[{id:'task',goal:'Report the book price with its source.'}],
+    pages:[{id:'current',url:'https://shop.test/poetry',text:'Olio £23.88',links:[{label:'Olio',href:'https://shop.test/book(1)'}]}]};
+  const valid=await R.assessCompletion('Olio £23.88',{...context,claim:'Olio costs £23.88. [Source](https://shop.test/book(1))'});
+  assert.equal(valid.complete,true);assert.equal(called,1);
+  const invalid=await R.assessCompletion('Olio £23.88',{...context,claim:'Olio costs £23.88. [Source](https://shop.test/book(999))'});
+  assert.equal(invalid.complete,false);assert.deepEqual(invalid.unverifiedUrls,['https://shop.test/book(999)']);assert.equal(called,1);
+  const upper=await R.assessCompletion('Olio £23.88',{...context,claim:'Source: HTTPS://invented.test/price'});
+  assert.equal(upper.complete,false);assert.equal(called,1);
+});
+
+await check('completion accepts separate exact evidence and rejects stitched or partly invented evidence', async () => {
+  const context={request:'Compare two launches.',claim:'First July 16; second November 14.',goals:[{id:'task',goal:'Compare launches'}],
+    pages:[{id:'first',text:'Launch date: July 16. Crew: 3.'},{id:'second',text:'Launch date: November 14. Crew: 3.'}]};
+  for (const [evidence, expected] of [
+    [[{sourceId:'first',quote:'Launch date: July 16.'},{sourceId:'second',quote:'Launch date: November 14.'}],true],
+    [[{sourceId:'first',quote:'July 16. November 14.'}],false],
+    [[{sourceId:'first',quote:'July 16.'},{sourceId:'second',quote:'November 15.'}],false],
+    [[{sourceId:'missing',quote:'July 16.'}],false],
+    [[{sourceId:'first',quote:'.'}],false],
+    [[],false],
+  ]) {
+    R.setGeminiCaller(async()=>JSON.stringify({checks:[{id:'task',status:'complete',evidence,reason:'Checked both dates.'}]}));
+    const result=await R.assessCompletion('',context);assert.equal(result.complete,expected);
+    if(expected)assert.equal(result.checks[0].evidence.length,2);
+  }
+});
+
+await check('completion receives accepted choices separately from page outcomes', async () => {
+  const context={request:'Ask which Alex before preparing a private draft.',claim:'Draft saved for Alex Chen.',
+    goals:[{id:'task',goal:'Ask which Alex then save the draft privately.'}],
+    pages:[{id:'current',text:'Private draft saved. Recipient: Alex Chen.',at:200}],
+    decisions:[{widget:'recipient',question:'Which Alex?',label:'Alex Chen',instruction:'Select Alex Chen.',action:'select',at:100}]};
+  R.setGeminiCaller(async (prompt,opts)=>{
+    const sources=JSON.parse(prompt.split('Accepted answers recorded by the verification interface (not actor claims): ')[1].split('\n')[0]);
+    assert.equal(sources[0].at,100);assert.equal(sources[0].kind,'user-decision');
+    assert.deepEqual(opts.responseSchema.properties.checks.items.properties.id.enum,['task']);
+    assert.deepEqual(opts.responseSchema.properties.checks.items.properties.evidence.items.properties.sourceId.enum,['current','user-decision:0']);
+    assert.deepEqual(JSON.parse(sources[0].text),{question:'Which Alex?',choice:'Alex Chen',instruction:'Select Alex Chen.',action:'select',at:100});
+    assert(prompt.includes('every required user choice or approval needs an accepted answer record'));
+    return JSON.stringify({checks:[{id:'task',status:'complete',reason:'Asked before saving.',evidence:[
+      {sourceId:'user-decision:0',quote:'Which Alex?'},{sourceId:'current',quote:'Private draft saved. Recipient: Alex Chen.'}]}]});
+  });
+  assert.equal((await R.assessCompletion('',context)).complete,true);
+  // A reviewer cannot cite a made-up answer when no answer was recorded.
+  R.setGeminiCaller(async()=>JSON.stringify({checks:[{id:'task',status:'complete',reason:'Claimed answer.',
+    evidence:[{sourceId:'user-decision:0',quote:'Alex Chen'}]}]}));
+  assert.equal((await R.assessCompletion('',{...context,decisions:[]})).complete,false);
+  assert.equal((await R.assessCompletion('',context)).complete,false,
+    'a real accepted answer alone cannot prove the resulting browser state');
+  // A URL typed in a choice does not become a browser-observed source.
+  let called=false;R.setGeminiCaller(async()=>{called=true;return '{}';});
+  const result=await R.assessCompletion('',{...context,claim:'Receipt: https://invented.test/receipt',
+    decisions:[{label:'https://invented.test/receipt',at:100}]});
+  assert.equal(result.complete,false);assert.equal(called,false);
+});
+
+await check('completion distinguishes a changed preference from a completed browser action', async () => {
+  const context={request:'Book after I approve. The updated budget is $748.',claim:'Booked for $748.',
+    goals:[{id:'task',goal:'Book the hotel.'}],requirements:[{quote:'Change the budget limit to $748.'}],
+    pages:[{id:'receipt',text:'Booking confirmed. Total $748.',at:200}],
+    decisions:[{question:'Raise the budget?',label:'Raise to $748',instruction:'Change the budget limit to $748.',action:'revise',at:100}]};
+  const outcome={id:'task',status:'complete',basis:'page',reason:'Booked.',evidence:[{sourceId:'receipt',quote:'Booking confirmed. Total $748.'}]};
+  const preference={id:'requirement:0',status:'complete',basis:'user-decision',reason:'Budget changed.',
+    evidence:[{sourceId:'user-decision:0',quote:'Change the budget limit to $748.'}]};
+  R.setGeminiCaller(async()=>JSON.stringify({checks:[outcome,preference]}));
+  assert.equal((await R.assessCompletion('',context)).complete,true);
+  // An approval cannot be relabelled as a completed task, even by the checker.
+  R.setGeminiCaller(async()=>JSON.stringify({checks:[{...preference,id:'task'},preference]}));
+  let result=await R.assessCompletion('',context);
+  assert.equal(result.complete,false);
+  assert.match(result.checks[0].reason,/no observed page evidence/);
+  // Claiming a mixed check requires both source families, not either one.
+  R.setGeminiCaller(async()=>JSON.stringify({checks:[outcome,{...preference,basis:'both'}]}));
+  assert.equal((await R.assessCompletion('',context)).complete,false);
+  R.setGeminiCaller(async()=>JSON.stringify({checks:[outcome,preference]}));
+  assert.equal((await R.assessCompletion('',{...context,decisions:[]})).complete,false);
+});
+
+await check('completion repairs rejected citations once without weakening or replacing other judgments', async () => {
+  const context={request:'Ask which room, then book it.',claim:'Booked the queen room.',
+    goals:[{id:'task',goal:'Book the chosen room.'}],requirements:[{quote:'Ask which room before selecting it.'}],
+    pages:[{id:'receipt',text:'Booking confirmed. Room: Queen.',at:200}],
+    decisions:[{question:'Which room?',label:'Queen',instruction:'Select Queen.',action:'select',at:100}]};
+  const pageProof={sourceId:'receipt',quote:'Booking confirmed. Room: Queen.'};
+  const decisionProof={sourceId:'user-decision:0',quote:'Select Queen.'};
+  const outcome={id:'task',status:'complete',basis:'page',reason:'Receipt confirms booking.',evidence:[pageProof]};
+  const broken={id:'requirement:0',status:'complete',basis:'both',reason:'Asked then selected.',evidence:[decisionProof]};
+  for(const mode of ['valid','downgrade','invented','duplicate','unrelated','failed-outcome']) {
+    const calls=[];
+    R.setGeminiCaller(async(prompt,opts)=>{
+      calls.push(opts.tag);
+      if(opts.tag==='verify-completion')return JSON.stringify({checks:[
+        mode==='failed-outcome'?{...outcome,status:'incomplete'}:outcome,broken]});
+      assert.equal(opts.tag,'verify-completion-evidence');
+      assert.deepEqual(opts.responseSchema.properties.checks.items.properties.id.enum,['requirement:0']);
+      const repaired={...broken,evidence:[decisionProof,pageProof]};
+      if(mode==='downgrade'){repaired.basis='user-decision';repaired.evidence=[decisionProof];}
+      if(mode==='invented')repaired.evidence=[decisionProof,{...pageProof,quote:'Invented receipt.'}];
+      return JSON.stringify({checks:mode==='duplicate'?[repaired,repaired]
+        :mode==='unrelated'?[{...outcome,status:'incomplete'}]
+        :[repaired,{...outcome,status:'complete',reason:'Changed by repair.'}]});
+    });
+    const result=await R.assessCompletion('',context);
+    assert.equal(result.complete,mode==='valid',mode);
+    assert.equal(result.checks[0].reason,outcome.reason,'repair cannot replace another judgment');
+    assert.deepEqual(calls,['verify-completion','verify-completion-evidence'],'only one repair call');
+  }
+});
+
+await check('citation repair retains answer-only and legacy page source requirements', async () => {
+  for(const originalBasis of ['user-decision',undefined]) {
+    const context={request:'Book after approval.',claim:'Booked.',goals:[{id:'task',goal:'Book.'}],
+      requirements:[{quote:'Ask for approval.'}],pages:[{id:'receipt',text:'Booking confirmed.',at:200}],
+      decisions:originalBasis?[]:[{label:'Approved',at:100}]};
+    R.setGeminiCaller(async(_,opts)=>JSON.stringify({checks:[
+      {id:'task',status:'complete',basis:'page',evidence:[{sourceId:'receipt',quote:'Booking confirmed.'}]},
+      {id:'requirement:0',status:'complete',basis:opts.tag==='verify-completion'?originalBasis:originalBasis?'page':'user-decision',
+        evidence:opts.tag==='verify-completion'?[{sourceId:'missing',quote:'Approved'}]
+          :originalBasis?[{sourceId:'receipt',quote:'Booking confirmed.'}]:[{sourceId:'user-decision:0',quote:'Approved'}]}
+    ]}));
+    assert.equal((await R.assessCompletion('',context)).complete,false);
+  }
+});

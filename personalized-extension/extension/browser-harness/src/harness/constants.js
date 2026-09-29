@@ -77,7 +77,8 @@ export const _BH_HIGHLIGHT_COLORS = [
 // CDP key-event metadata. key -> [windowsVirtualKeyCode, code, text] where
 // text is the printable character that ends up in input/keypress events
 // (empty string for non-printing keys). For one-character `key`s not in
-// this map, bhPressKey synthesises an entry from the codepoint.
+// this map, bhPressKey uses the physical letter/digit key or an unmapped
+// printable character. Unicode code points must not become virtual key codes.
 export const BH_KEYS = {
   Enter: [13, 'Enter', '\r'], Tab: [9, 'Tab', '\t'], Backspace: [8, 'Backspace', ''],
   Escape: [27, 'Escape', ''], Delete: [46, 'Delete', ''], ' ': [32, 'Space', ' '],

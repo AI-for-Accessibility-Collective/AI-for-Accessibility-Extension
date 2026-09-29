@@ -1,3 +1,4 @@
+let validationDecisionResponder;
 // Browser-harness primitives (chrome.debugger / CDP) -- exposes
 // `globalThis.BrowserHarness`. See extension/browser-harness/README.md.
 self.importScripts(
@@ -53,15 +54,61 @@ self.importScripts(
 // measurement, not a page the task is on, and its findings would enter the
 // session as unread holds about pages the person never saw.
 const probeTabs = new Set();
+// The module set dies with the worker; storage.session survives it within
+// the browser session. On worker start, sweep tabs a dead worker left open -
+// they are background amazon tabs the person never asked for.
+chrome.storage.session?.get('probeTabIds').then(async (r) => {
+  for (const id of r.probeTabIds || []) {
+    probeTabs.add(id);
+    try { await chrome.tabs.remove(id); } catch { /* already gone */ }
+    probeTabs.delete(id);
+  }
+  chrome.storage.session?.set({ probeTabIds: [] });
+}).catch(() => {});
+const persistProbeTabs = () =>
+  chrome.storage.session?.set({ probeTabIds: [...probeTabs] }).catch(() => {});
 
-chrome.webNavigation?.onCompleted?.addListener((d) => {
+// A handed-over tab that closes ends the hand over.
+//
+// Without this the 4-second poll kept firing on a tab that no longer exists,
+// axSnapshot threw every time, and `holder` stayed 'person' — so the agent
+// remained gated with no give-up clock, because the hold timeout is
+// deliberately disabled while the person has the wheel. The person had closed
+// the page and nothing anywhere noticed.
+chrome.tabs?.onRemoved?.addListener(async (tabId) => {
+  try {
+    const st = globalThis.Validation?.status?.();
+    if (st?.holder === 'person' && st.tabId === tabId) {
+      await globalThis.Validation?.handBack?.({ tabId });
+    }
+  } catch { /* nothing to hand back to */ }
+});
+
+chrome.webNavigation?.onCompleted?.addListener(async (d) => {
   if (d.frameId !== 0) return;                       // top frame only
   if (probeTabs.has(d.tabId)) return;                // a measurement, not the task
-  if (!globalThis.Validation?.isRunning?.()) return;
+  // ensureRunning, not isRunning: after a worker restart the sync check is
+  // false forever and observation silently stops - the person keeps
+  // browsing a task the panel still shows, and no page gets checked.
+  //
+  // A live watch is the other reason to read a settle. A watched value outlives
+  // the run that set it — the flights case is keeping the fare watch on after
+  // booking — so "no task is running" stopped being the whole answer to whether
+  // this page is worth looking at. Both checks are one storage read.
+  const running = await globalThis.Validation?.ensureRunning?.();
+  if (!running && !(await globalThis.ValidationWatch?.any?.())) return;
+  const taskId = globalThis.Validation?.taskId?.();
+  if (running) {
+    const a = (await chrome.storage.local.get('bhAgent')).bhAgent;
+    const v = (await chrome.storage.local.get('aa.validation'))['aa.validation'];
+    const tabId = v?.opts?.checkOnly ? v.opts.tabId : a?.taskId === taskId ? a?.tabId : v?.opts?.tabId;
+    if (tabId != null && tabId !== d.tabId) return;
+  }
   // Let the page settle. Amazon renders prices and stock after first paint,
   // and reading too early reports absences that are really just lateness.
   setTimeout(() => {
-    globalThis.Validation.observe(d.tabId).catch((e) =>
+    if (taskId !== globalThis.Validation?.taskId?.()) return;
+    globalThis.Validation.observe(d.tabId, { onlyChanged: true }).catch((e) =>
       console.warn('[validation] observe failed:', e.message));
   }, 1200);
 });
@@ -342,11 +389,15 @@ ensureUserScriptWorld().then(syncCustomUserScripts);
 // runtime AI calls inside saved skills.
 // audioParts: array of {mimeType, data} for audio transcription (Increment 1
 // captions). Uses the same inlineData path as images.
+// responseSchema + maxOutputTokens: structured output, which the validation
+// reasoner needs. Its benchmark lost 3 of 40 calls to JSON cut off mid-response
+// against no declared cap, so the cap and the schema travel together.
 async function callGemini(prompt, apiKey, optsOrImages) {
   const opts = Array.isArray(optsOrImages)
     ? { images: optsOrImages }
     : (optsOrImages || {});
-  const { images, mimeType, model, audioParts } = opts;
+  const { images, mimeType, model, audioParts, responseSchema, maxOutputTokens,
+          timeoutMs } = opts;
 
   const parts = [{ text: prompt }];
   if (images && images.length > 0) {
@@ -370,14 +421,27 @@ async function callGemini(prompt, apiKey, optsOrImages) {
     }
   }
 
-  const generationConfig = { temperature: 0.7 };
+  const generationConfig = { temperature: Number.isFinite(opts.temperature) ? opts.temperature : 0.7 };
   if (mimeType) generationConfig.responseMimeType = mimeType;
+  if (responseSchema) generationConfig.responseSchema = responseSchema;
+  if (maxOutputTokens) generationConfig.maxOutputTokens = maxOutputTokens;
+  if (opts?.thinking) generationConfig.thinkingConfig = { thinkingLevel: opts.thinking };
 
+  // 30 seconds was chosen for the agent's own calls: a screenshot and an
+  // element list in, one short action out. The reasoner's call is a different
+  // shape — every question in the task model, structured output — and it
+  // inherited this timeout by sharing the function. On a live Wikipedia
+  // article, 40,000 characters after the size guard and 59 questions, the call
+  // takes about 35 seconds. A legitimate slow call is indistinguishable from a
+  // hung one, so all three retries aborted and the page was never checked at
+  // all — and large, question-dense pages are exactly the ones with the most
+  // on them to check.
+  //
+  // Callers that know their call is long pass timeoutMs. Nothing else moves.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30_000);
-  let resp;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs || 30_000);
   try {
-    resp = await fetch(getApiUrl(apiKey, model), {
+    const resp = await fetch(getApiUrl(apiKey, model), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -386,17 +450,79 @@ async function callGemini(prompt, apiKey, optsOrImages) {
       }),
       signal: controller.signal,
     });
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`Gemini API error ${resp.status}: ${err}`);
+    }
+    const data = await resp.json();
+    if (data.candidates?.[0]?.finishReason === 'MAX_TOKENS') throw new Error('The model response was cut short. Please retry.');
+    const text = data.candidates?.[0]?.content?.parts?.filter(p => !p.thought).map(p => p.text || '').join('');
+    if (!text) throw new Error(`Gemini returned no text: ${JSON.stringify(data)}`);
+    return text;
   } finally {
     clearTimeout(timeoutId);
   }
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Gemini API error ${resp.status}: ${err}`);
+}
+
+/**
+ * The streaming form of callGemini: same request, but against the
+ * streamGenerateContent endpoint, handing each text piece to `onText` as it
+ * arrives and resolving with the complete text. Text calls only - the
+ * reasoner is its one consumer and sends no images or audio.
+ */
+async function callGeminiStream(prompt, apiKey, opts, onText) {
+  const { mimeType, model, responseSchema, maxOutputTokens, timeoutMs } = opts || {};
+  const generationConfig = { temperature: opts?.temperature ?? 0.7 };
+  if (mimeType) generationConfig.responseMimeType = mimeType;
+  if (responseSchema) generationConfig.responseSchema = responseSchema;
+  if (maxOutputTokens) generationConfig.maxOutputTokens = maxOutputTokens;
+  if (opts?.thinking) generationConfig.thinkingConfig = { thinkingLevel: opts.thinking };
+
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+    + `${model || GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs || 30000);
+  let full = '';
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig }),
+      signal: controller.signal,
+    });
+    if (!resp.ok || !resp.body) {
+      throw new Error(`Gemini stream error ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+    }
+    // SSE: `data: {json}` lines separated by blank lines. A chunk boundary can
+    // fall anywhere, so lines are only consumed once their newline arrives.
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let carry = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      carry += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = carry.indexOf('\n')) >= 0) {
+        const line = carry.slice(0, nl).trim();
+        carry = carry.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const piece = JSON.parse(payload).candidates?.[0]?.content?.parts?.[0]?.text;
+          if (piece) {
+            full += piece;
+            if (onText) await onText(piece);
+          }
+        } catch { /* a malformed keep-alive line is not a failure */ }
+      }
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
-  const data = await resp.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error(`Gemini returned no text: ${JSON.stringify(data)}`);
-  return text;
+  if (!full) throw new Error('Gemini stream returned no text');
+  return full;
 }
 
 async function getApiKey() {
@@ -605,6 +731,14 @@ if (chrome.notifications && chrome.notifications.onClicked) {
   });
 }
 
+// Whether the agent's work is checked. One setting, read wherever a task
+// starts; off unless the person switched it on.
+const VERIFICATION_SETTING = 'verificationLayer';
+async function verificationEnabled() {
+  try { return (await chrome.storage.sync.get(VERIFICATION_SETTING))[VERIFICATION_SETTING] === true; }
+  catch { return false; }
+}
+
 // Hand the agent loop a Gemini caller that resolves the stored API key on
 // every call. agent.js can't reach this closure on its own; it stays
 // transport-agnostic so future runners (cli, skill-creator) can swap it.
@@ -615,6 +749,68 @@ if (globalThis.BrowserAgent) {
     return await callGemini(prompt, key, opts);
   });
 }
+
+// The validation reasoner uses the same one. Not a second provider and not a
+// second key store: the layer that checks the agent runs on the same key the
+// agent does, so there is nothing extra to configure before checking works.
+if (globalThis.ValidationReasoner) {
+  globalThis.ValidationReasoner.setGeminiCaller(async (prompt, opts) => {
+    const key = await getApiKey();
+    if (!key) throw new Error('No Gemini API key configured.');
+    return await callGemini(prompt, key, opts);
+  });
+  // And the streaming form, so a stop-class answer written early in the reply
+  // reaches the gate while the rest is still being generated. The reasoner
+  // falls back to the plain call if a stream breaks, so this only adds speed.
+  globalThis.ValidationReasoner.setGeminiStreamCaller(async (prompt, opts, onText) => {
+    const key = await getApiKey();
+    if (!key) throw new Error('No Gemini API key configured.');
+    return await callGeminiStream(prompt, key, opts, onText);
+  });
+}
+
+// Writing the task model uses the same key, for the same reason. It needs a
+// longer ceiling than a page read: the prompt carries every worked example, so
+// the first call is dominated by reading them rather than by answering.
+if (globalThis.ValidationGenerate) {
+  globalThis.ValidationGenerate.setCaller(async (prompt, opts) => {
+    const key = await getApiKey();
+    if (!key) throw new Error('No Gemini API key configured.');
+    return await callGemini(prompt, key, { ...opts, timeoutMs: opts?.timeoutMs ?? 180_000 });
+  });
+}
+
+/**
+ * A run that the service worker took down with it, said out loud.
+ *
+ * The agent loop lives in module state, so a worker teardown ends it. The
+ * stored record does not know that: it still says `running`, or worse `paused`,
+ * and both surfaces go on showing an agent that no longer exists. A paused run
+ * is the bad case, because pausing is something the person did deliberately and
+ * they are waiting for it to go again.
+ *
+ * This runs once per worker start, when no loop can be running yet, so anything
+ * stored as live is stale by construction.
+ */
+(async () => {
+  try {
+    const st = (await chrome.storage.local.get('bhAgent')).bhAgent;
+    if (!st || (st.status !== 'running' && st.status !== 'paused')) return;
+    if (globalThis.BrowserAgent?.isRunning?.()) return;
+    const why = st.status === 'paused'
+      ? 'The browser put this to sleep while it was paused, so it never started again. '
+        + 'Nothing was left half-done — it stopped where you paused it.'
+      : 'The browser put this to sleep before it finished, so it stopped part way. '
+        + 'What it had already done is in the log.';
+    await chrome.storage.local.set({
+      bhAgent: { ...st,
+        status: 'stopped',
+        endedAt: Date.now(),
+        summary: why,
+        log: [...(st.log || []), { kind: 'info', t: Date.now(), text: why }] },
+    });
+  } catch { /* a missing record is not a stalled run */ }
+})();
 
 // The Librarian's slow lane (extraction, reflection, playbooks) uses the
 // same key-resolving caller.
@@ -912,36 +1108,51 @@ async function _doTranscribeMedia(url, apiKey, MAX_MEDIA_BYTES, CHUNK_CONCURRENT
 // The alternative shipped first: the model was asked to guess, and answered
 // with invented numbers ("Estimated results: ~2,000"). A count the page never
 // said is exactly the kind of claim this layer exists to replace.
+//
+// Generalised off Amazon by reading both hardcoded halves rather than assuming
+// them. `${origin}/s?k=` became: find the parameter of the URL we are already
+// on whose value carries the words the person searched for, and rewrite that
+// one. `/([\d,]+) results/i` became: that pattern first because it is free,
+// then one reasoner call scoped to the count when it misses. See probe.js —
+// neither half guesses, and a site where the search is not in the URL is
+// reported as such instead of opening a page that does not exist.
 async function probeNarrower(tabUrl) {
+  const P = globalThis.ValidationProbe;
   const st = (await chrome.storage.local.get('aa.validation'))['aa.validation'] || {};
   const c = st.contract || {};
-  let base = '';
-  let origin = 'https://www.amazon.com';
-  try {
-    const u = new URL(tabUrl);
-    origin = u.origin;
-    base = (u.searchParams.get('k') || '').trim();
-  } catch { /* fall through to the contract's own query */ }
-  if (!base) base = globalThis.ValidationAsk?.toQuery?.(c) || String(c.item || '');
-  if (!base) return null;
+  const ask = globalThis.ValidationAsk?.toQuery?.(c) || String(c.item || '');
+  if (!P) return { options: [], why: 'the probe is not loaded' };
+  if (!ask) {
+    return { options: [],
+      why: 'you have not told me what you are looking for, so I have nothing to '
+         + 'narrow the search with.' };
+  }
 
-  // Narrower means: a term of the ask that the query does not carry yet.
-  const have = new Set(base.toLowerCase().split(/\s+/));
-  const terms = [
-    ...(Array.isArray(c.mustHaves) ? c.mustHaves : []),
-    c.size ? `size ${c.size}` : null,
-  ].filter(Boolean)
-   .filter((t) => !String(t).toLowerCase().split(/\s+/).every((w) => have.has(w)));
-  const candidates = terms.slice(0, 3).map((t) => `${base} ${t}`);
-  if (!candidates.length) return null;
+  // How a search is written on this site, read off the address bar. No match
+  // means the search is not in the URL here — a POST, an app that keeps it in
+  // state — and there is nothing to rewrite.
+  const param = P.searchParamOf(tabUrl, ask);
+  if (!param) return { options: [], why: P.NO_SEARCH_GRAMMAR };
+
+  const candidates = P.narrowerQueries(param.value, c);
+  if (!candidates.length) {
+    return { options: [],
+      why: 'everything you told me is already in the search, so there is nothing '
+         + 'left of the ask to narrow it with.' };
+  }
+
+  const askPage = globalThis.ValidationReasoner?.hasCaller?.()
+    ? (q, text) => globalThis.ValidationReasoner.askPage(q, text)
+    : null;
 
   const options = [];
   for (const q of candidates) {
-    const url = `${origin}/s?k=${encodeURIComponent(q)}`;
+    const url = P.narrowerUrl(tabUrl, param.key, q);
     let tab = null;
     try {
       tab = await chrome.tabs.create({ url, active: false });
       probeTabs.add(tab.id);
+      persistProbeTabs();
       // Wait for the load, then the same settle the observe trigger uses.
       await new Promise((resolve) => {
         const done = (id, info) => {
@@ -960,30 +1171,49 @@ async function probeNarrower(tabUrl) {
         chrome.tabs.onUpdated.addListener(done);
       });
       const snap = await globalThis.BrowserHarness.axSnapshot(tab.id);
-      const m = /of\s+(?:over\s+|about\s+)?([\d,]+)\s+results/i.exec(snap.text)
-             || /([\d,]+)\s+results/i.exec(snap.text);
-      options.push({ query: q, count: m ? m[1] : null });
+      const measured = await P.countOn(snap.text, askPage);
+      options.push({ query: q, url, ...measured });
     } catch (e) {
-      options.push({ query: q, count: null });
+      options.push({ query: q, url, count: null,
+                     from: `I could not open it: ${String(e.message || e).slice(0, 60)}` });
     } finally {
       if (tab) {
         probeTabs.delete(tab.id);
+        persistProbeTabs();
         chrome.tabs.remove(tab.id).catch?.(() => {});
       }
     }
   }
-  return options;
+  return { options, why: null, param: param.key };
 }
 
 // Probe, don't guess. The card goes up immediately so the press is seen to
 // have done something; the real counts replace it when read. Falls back to
-// asking the agent when the ask has no unused terms left to add.
-async function runRefineProbe(fallbackSay) {
-  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+// asking the agent when there was nothing to measure — and now says WHY there
+// was nothing, because "I could not tell how a search is written on this site"
+// and "I measured nothing" look identical from the outside and are not the same
+// thing at all.
+let refineProbeRunning = false;
+async function runRefineProbe(fallbackSay, context = {}) {
+  // One at a time. Two presses opened two probes, up to six background tabs
+  // each held about sixteen seconds, on a control a person can double-press
+  // precisely because the first press has no immediate effect.
+  if (refineProbeRunning) return 0;
+  refineProbeRunning = true;
+  try { return await _runRefineProbe(fallbackSay, context); }
+  finally { refineProbeRunning = false; }
+}
+
+async function _runRefineProbe(fallbackSay, context = {}) {
+  const tabs = context.tabId != null ? [await chrome.tabs.get(context.tabId)]
+    : await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (context.isCurrent && !await context.isCurrent()) return 0;
   await globalThis.Validation?.annotate?.({
     probe: { ask: 'Trying narrower searches…', options: [] } });
-  const options = await probeNarrower(tabs[0]?.url || '');
-  if (options && options.length) {
+  const r = await probeNarrower(tabs[0]?.url || '') || { options: [], why: null };
+  if (context.isCurrent && !await context.isCurrent()) return 0;
+  const options = r.options || [];
+  if (options.length) {
     await globalThis.Validation?.annotate?.({
       probe: { ask: 'I tried these. Pick one, or keep the current search.', options } });
     const best = options.filter((o) => o.count)[0];
@@ -994,10 +1224,17 @@ async function runRefineProbe(fallbackSay) {
         level: 'aside', live: 'polite', widget: 'probe' }],
     }).catch(() => {});
   } else {
-    await globalThis.Validation?.annotate?.({ probe: null });
-    if (fallbackSay) await steerAgent(fallbackSay);
+    await globalThis.Validation?.annotate?.({
+      probe: r.why ? { ask: r.why, options: [] } : null });
+    if (r.why) {
+      chrome.runtime.sendMessage({
+        type: 'validationSpeak', phase: 'probe',
+        lines: [{ say: r.why, level: 'aside', live: 'polite', widget: 'probe' }],
+      }).catch(() => {});
+    }
+    if (fallbackSay) await steerAgent(fallbackSay, context);
   }
-  return (options || []).length;
+  return options.length;
 }
 
 // One steering path for everything the person sends the agent - the tell
@@ -1007,19 +1244,25 @@ async function runRefineProbe(fallbackSay) {
 // carrying the original ask - the alternative was the live dead end where
 // the agent asked "which option?", ended, and every answer was refused with
 // "no agent is running". No task at all is said honestly.
-async function steerAgent(say) {
+async function steerAgent(say, context = {}) {
+  const current = async () => (!context.isCurrent || await context.isCurrent())
+    && (context.taskId === undefined || context.taskId === globalThis.Validation?.taskId?.());
+  const stale = () => ({ queued: 0, stale: true });
   if (globalThis.BrowserAgent?.isRunning?.()) {
+    if (!await current()) return stale();
     return globalThis.BrowserAgent.interject(say);
   }
   // ensureRunning, not isRunning: a worker restart nulls the session's module
   // state while the stored run lives on, and the sync check answered "no
   // task" to the person's first press after every restart.
   if (globalThis.BrowserAgent && await globalThis.Validation?.ensureRunning?.()) {
+    if (!await current()) return stale();
+    const taskId = globalThis.Validation.taskId?.();
     const prev = (await chrome.storage.local.get('bhAgent')).bhAgent || {};
     // The agent's own tab, while it still exists - the run usually works in
     // a background tab, so "the active tab" is wherever the person is
     // reading, not where the task was.
-    let tabId = prev.tabId ?? null;
+    let tabId = context.tabId ?? prev.tabId ?? null;
     if (tabId != null) {
       try { await chrome.tabs.get(tabId); } catch { tabId = null; }
     }
@@ -1029,13 +1272,17 @@ async function steerAgent(say) {
     }
     // Continuations do not compound: the base task is kept, the newest
     // instruction replaces the previous continuation clause.
-    const base = String(prev.task || '').split('. Continuing where you left off:')[0];
+    const rules = await globalThis.Validation.rules?.() || [];
+    if (!await current()) return stale();
+    if (!globalThis.Validation.isTaskReady?.(taskId)) return { queued: 0, why: 'The task was stopped or its checks are not ready.' };
+    const base = globalThis.Validation.request?.() || String(prev.task || '').split('. Continuing where you left off:')[0];
     const task = base ? `${base}. Continuing where you left off: ${say}` : say;
-    globalThis.BrowserAgent.run(task, { tabId }).catch((e) => {
+    globalThis.BrowserAgent.run(task, { tabId, taskId,
+      instructions: rules.filter(r => r.on !== false).map(r => r.text).filter(Boolean) }).catch(async (e) => {
       // Two presses can race past the isRunning check; the loser's
       // instruction still reaches the agent instead of vanishing.
       if (/already running/i.test(e.message || '')) {
-        globalThis.BrowserAgent.interject(say);
+        if (await current() && taskId === globalThis.Validation?.taskId?.()) globalThis.BrowserAgent.interject(say);
       } else {
         console.warn('[BrowserAgent] continue failed:', e.message);
       }
@@ -1114,53 +1361,46 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'bhAgentStart') {
-    // Kick the loop and answer immediately. Progress lands in
-    // chrome.storage.local.bhAgent; the popup tails it via storage.onChanged
-    // so it survives the popup closing.
-    if (!globalThis.BrowserAgent) {
-      sendResponse({ error: 'agent not loaded' });
-      return false;
-    }
-    if (globalThis.BrowserAgent.isRunning()) {
-      sendResponse({ error: 'agent already running' });
-      return false;
-    }
-    // Start checking at the same moment the agent starts acting.
-    //
-    // Not a separate button. A validation layer someone has to remember to
-    // switch on is off exactly when it matters — nobody predicts the run that
-    // will go wrong. Delegating and being able to check what was delegated are
-    // one action, so they are one call.
-    //
-    // `msg.contract` is honoured when the caller already built one (the panel
-    // does, after asking about the gaps); otherwise the task sentence is
-    // parsed, and whatever could not be read from it becomes a question rather
-    // than a guess.
-    if (globalThis.Validation && !globalThis.Validation.isRunning()) {
-      try {
-        const contract = msg.contract || globalThis.ValidationAsk.contractFromAsk(msg.task);
-        globalThis.Validation.start(contract, { style: msg.style || 'balanced' });
-      } catch (e) {
-        console.warn('validation did not start:', e);   // never block the agent
+    (async () => {
+      if (!globalThis.BrowserAgent) return { error: 'The agent did not load. Reload the extension and try again.' };
+      // Checking the agent's work is a setting, off unless the person turns
+      // it on (popup or side panel). On, the task is prepared and every step
+      // checked; off, the agent runs by itself as it always could.
+      if (await verificationEnabled()) {
+        if (!globalThis.ValidationController) {
+          return { error: 'The checks did not load. Reload the extension, or turn checking off to run without it.' };
+        }
+        // Voice cannot wait out the preparation: its tool call gives up after
+        // 30 seconds and the task then started anyway, after the person had
+        // heard that it failed. So voice asks for an answer at once, and
+        // readiness or failure is spoken when it happens.
+        if (msg.detach) {
+          globalThis.ValidationController.start(msg).catch(() => {});
+          return { started: true, preparing: true };
+        }
+        return globalThis.ValidationController.start(msg);
       }
-    }
-    globalThis.BrowserAgent.run(msg.task, {
-      tabId: msg.tabId,
-      tabMode: msg.tabMode,
-      maxSteps: msg.maxSteps,
-    }).catch((e) => {
-      // Agent already wrote the error to storage; nothing more to do here.
-      console.warn('[BrowserAgent] run failed:', e.message);
-    });
-    sendResponse({ started: true });
-    return false;
+      if (globalThis.BrowserAgent.isRunning()) return { error: 'The agent is already working on a task. Stop it first, or wait for it to finish.' };
+      // A checked run left over from before the switch was turned off must not
+      // go on gating this one.
+      globalThis.ValidationController?.cancel();
+      if (globalThis.Validation?.isRunning?.()) await globalThis.Validation.stop();
+      globalThis.BrowserAgent.run(msg.task, { tabId: msg.tabId, tabMode: msg.tabMode, maxSteps: msg.maxSteps,
+        verification: false }).catch((e) => console.warn('[BrowserAgent] run failed:', e.message));
+      return { started: true, checked: false };
+    })().then(sendResponse).catch(e => sendResponse({ error: e.message }));
+    return true;
   }
 
   // ---- validation layer -------------------------------------------------
   if (msg.type === 'validationStart') {
-    globalThis.Validation.start(msg.contract, msg.opts || {})
-      .then((r) => sendResponse(r))
-      .catch((e) => sendResponse({ error: e.message }));
+    (async () => {
+      const tabId = msg.tabId ?? sender?.tab?.id
+        ?? (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.id;
+      const task = typeof msg.contract === 'string' ? msg.contract
+        : msg.contract?.said || globalThis.ValidationAsk.describe(msg.contract || {});
+      return globalThis.ValidationController.start({ ...msg.opts, task, contract: msg.contract, tabId, checkOnly: true });
+    })().then(sendResponse).catch(e => sendResponse({ error: e.message }));
     return true;
   }
   if (msg.type === 'validationObserve') {
@@ -1176,6 +1416,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.type === 'validationDone') {
+    globalThis.ValidationController?.cancel();
     // The person ends the task. Stops the agent too — a run whose checking has
     // been ended is a run nobody is watching, and that is the one state this
     // whole layer exists to prevent.
@@ -1193,13 +1434,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     steerAgent(said).then(sendResponse);
     return true;
   }
+  if (msg.type === 'validationAsk') {
+    // Asking is not steering. This route deliberately does not go anywhere
+    // near steerAgent() — every other press in this file sends the agent an
+    // instruction, and that is exactly why the person cannot currently ask a
+    // question without changing what the agent does next.
+    globalThis.Validation.ask(msg.question, { tabId: msg.tabId })
+      .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
+    return true;
+  }
   if (msg.type === 'validationAck') {
     globalThis.Validation.acknowledge(msg.key)
       .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
     return true;
   }
   if (msg.type === 'validationEdit') {
-    globalThis.Validation.editAsk(msg.field, msg.value)
+    globalThis.ValidationController.edit(msg.field, msg.value)
       .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
     return true;
   }
@@ -1214,42 +1464,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.type === 'validationAnswer') {
-    // The agent hears the decision BEFORE the hold releases. Resolving the
-    // hold alone meant "Change the size" let the agent resume and add the
-    // wrong size anyway - the answer never reached it. steerAgent queues the
-    // instruction (or restarts an ended agent); only then does answer()
-    // unblock.
-    (async () => {
-      try {
-        // A gate answer on a widget that probes goes through the probe, not
-        // through a sentence - otherwise "Narrow it down" at the gate got
-        // the model's invented counts while the same press on the finding
-        // card measured real ones.
-        const st = (await chrome.storage.local.get('aa.validation'))['aa.validation'] || {};
-        const held = (st.findings || []).find((f) => f.widget === msg.widget && f.control);
-        if (held?.control?.action === 'refine-narrow' && !/keep|leave|go on/i.test(String(msg.response))) {
-          // Not awaited - the card lands when measured. But a probe that
-          // finds nothing to try must not leave the agent waiting for a
-          // pick that will never come.
-          runRefineProbe(null).then((n) => {
-            if (!n) {
-              steerAgent('Never mind the wait. No narrower search to measure - '
-                + 'suggest your own way to narrow the results, then continue.');
-            }
-          });
-          await steerAgent('Wait. I am measuring narrower searches; a pick is coming.');
-        } else {
-          await steerAgent(`About ${msg.widget}: the person chose "${msg.response}". Do that before anything else.`);
-        }
-        const r = await globalThis.Validation.answer(msg.widget, msg.response);
-        sendResponse(r);
-      } catch (e) {
-        sendResponse({ error: e.message });
-      }
-    })();
+    // Both interfaces use this path, including Stop and typed answers.
+    validationDecisionResponder ||= globalThis.Validation.createDecisionResponder({
+      getState: async () => (await chrome.storage.local.get('aa.validation'))['aa.validation'],
+      stop: async () => {
+        globalThis.ValidationController?.cancel();
+        globalThis.BrowserAgent?.stop();
+        await globalThis.Validation.stop();
+      },
+      handOver: (options) => globalThis.Validation.handOver(options),
+      watch: (options) => globalThis.Validation.watch(options),
+      refine: (context) => runRefineProbe(null, context),
+      instructionFor: (control) => globalThis.Validation.instructionFor(control),
+      steer: steerAgent,
+      runtime: (message, context) => globalThis.Validation.chooseRuntime(message, { ...context, steer: steerAgent }),
+      revise: async (message, context) => {
+        if (!await context.isCurrent()) return { resolved: false, stale: true };
+        return globalThis.ValidationController.edit('request', `${globalThis.Validation.request()}\nLatest instruction from the person about ${message.widget}: ${message.response}`);
+      },
+      answer: (widget, response) => globalThis.Validation.answer(widget, response),
+    });
+    validationDecisionResponder({ ...msg, tabId: sender.tab?.id ?? msg.tabId }).then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message }));
     return true;
   }
   if (msg.type === 'validationStop') {
+    globalThis.ValidationController?.cancel();
+    globalThis.BrowserAgent?.stop();
     globalThis.Validation.stop().then(() => sendResponse({ stopped: true }));
     return true;
   }
@@ -1258,10 +1499,58 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // These are what delegation took away, so they go to the agent as a fresh
     // instruction rather than being simulated here.
     const c = msg.control || {};
+
+    // The four actions that are NOT a sentence sent to the agent. Each one is a
+    // mechanism the layer runs itself, and each replaced a sentence that asked
+    // the agent to do something the agent cannot do.
+    if (c.action === 'hand-over') {
+      // This used to say "Stop and let me do this part myself" and hope, which
+      // left the agent free to keep acting while the person did — two things on
+      // one page. It now holds the agent and starts the layer watching.
+      globalThis.Validation.handOver({ nodeId: c.node, reason: c.reason })
+        .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
+      return true;
+    }
+    if (c.action === 'hand-back') {
+      globalThis.Validation.handBack({ nodeId: c.node })
+        .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
+      return true;
+    }
+    if (c.action === 'watch-value') {
+      // The same correction hand over got, for the same reason. With no entry
+      // in the map below the label became the instruction — "Watch it for me.
+      // Then tell me what changed." — which is one re-read of the page already
+      // in front of the person, and a watch is the opposite of that. It now
+      // registers a watched value that re-reads on later settles and outlives
+      // the run.
+      // The tab the press came from, not the active one. The overlay is drawn
+      // on the page the agent is working, and the agent usually works in a
+      // background tab, so "the active tab" is wherever the person happens to
+      // be reading — which is not the page the value is on.
+      globalThis.Validation.watch({ nodeId: c.node, widget: c.widget,
+        tabId: msg.tabId ?? sender?.tab?.id })
+        .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
+      return true;
+    }
+    if (c.action === 'watch-stop') {
+      globalThis.Validation.unwatch({ id: c.watchId, nodeId: c.node, widget: c.widget })
+        .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
+      return true;
+    }
+
     // Keyed by the action ids the corpus actually emits - the first version
     // of this map used five ids of its own invention, none of which the
     // corpus produces, so every control on a live run was a dead button.
-    const say = {
+    //
+    // This map is now the FALLBACK, not the first answer. It is written in
+    // shopping vocabulary throughout — "Describe the product photos", "Undo it.
+    // If it was an order, cancel it." — because it was written against the
+    // Amazon corpus, and it is still exactly right there. On a passport form or
+    // a flight booking it names things that are not on the page. So a task
+    // model, which carries the question that produced the finding, is asked
+    // first; this answers when there is no model loaded (the corpus path, whose
+    // demo must not change) or when the model has nothing better to offer.
+    const fallbackSay = {
       'what-can-you-filter-by': 'Read me the filters this page offers, then wait for my pick.',
       'what-color-options': 'Read me the color options for this item, then wait for my pick.',
       'can-you-re-sort-them': 'Re-sort the results by rating and tell me the new first result.',
@@ -1282,9 +1571,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       'photos-describe': 'Describe the product photos, including anything the listing text does not say.',
       'receipts-readback': 'Read me back exactly what was done, with the numbers.',
       'undo-last': 'Undo it. If it was an order, cancel it. Tell me when it is done.',
-      'hand-over': 'Stop and let me do this part myself. Tell me where things stand.',
+      // No 'hand-over' row. It was "Stop and let me do this part myself. Tell me
+      // where things stand.", unreachable since the intercept above took it, and
+      // it read as though handing over were still a sentence the agent obeys.
       're-sort': `Re-sort the results by ${c.arg || 'rating'} and tell me the new first result.`,
       'pick-size': 'Read me the sizes on this page and wait for me to choose.',
+      'coupon-tick': 'Tick the coupon checkbox under the price, then read me the new price.',
       'remove-extras': 'Remove everything from the cart that is not the item we picked today.',
       'open-other': 'Open the next best match instead and read me its title.',
       'halt': 'Stop what you are doing and wait.',
@@ -1292,10 +1584,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // An action this map has never heard of must not be a dead button:
       // the label names the person's move, so it becomes the instruction.
       || (c.label ? `${c.label}. Then tell me what changed.` : null);
-    if (c.action === 'refine-narrow') {
-      runRefineProbe(say).then((n) => sendResponse({ probed: n }));
-      return true;
-    }
+
     if (c.action === 'probe-pick') {
       (async () => {
         await globalThis.Validation?.annotate?.({ probe: null });
@@ -1304,14 +1593,91 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       })();
       return true;
     }
-    if (!say) { sendResponse({ error: `no instruction for ${c.action}` }); return false; }
-    steerAgent(say).then((r) => {
+
+    (async () => {
+      // The task model's own question first. It knows what the thing is, which
+      // is the whole reason the instruction should come from it: "Read me the
+      // exact words on this page that answer it" carries the question with it,
+      // where "Describe the product photos" carries an Amazon page.
+      let say = null;
+      try { say = await globalThis.Validation?.instructionFor?.(c); } catch { /* fall back */ }
+      // The injection window: an answer for a phase behind the run does not
+      // steer the agent. The layer says so and keeps it for the review.
+      if (say && typeof say === 'object' && say.stale) {
+        chrome.runtime.sendMessage({ type: 'validationSpeak', phase: 'control',
+          lines: [{ say: say.say, level: 'aside', live: 'polite', widget: c.action }],
+        }).catch(() => {});
+        sendResponse({ stale: true, say: say.say });
+        return;
+      }
+      say = (typeof say === 'string' ? say : null) || fallbackSay;
+
+      if (c.action === 'refine-narrow') {
+        sendResponse({ probed: await runRefineProbe(say) });
+        return;
+      }
+      if (!say) { sendResponse({ error: `no instruction for ${c.action}` }); return; }
+      const r = await steerAgent(say);
       chrome.runtime.sendMessage({
         type: 'validationSpeak', phase: 'control',
         lines: [{ say, level: 'aside', live: 'polite', widget: c.action }],
       }).catch(() => {});
       sendResponse({ sent: say, ...r });
-    });
+    })();
+    return true;
+  }
+
+  if (msg.type === 'validationHandOver') {
+    globalThis.Validation.handOver({ nodeId: msg.nodeId, reason: msg.reason, tabId: msg.tabId })
+      .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
+    return true;
+  }
+  if (msg.type === 'validationHandBack') {
+    globalThis.Validation.handBack({ nodeId: msg.nodeId, tabId: msg.tabId })
+      .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
+    return true;
+  }
+  if (msg.type === 'validationWatch') {
+    globalThis.Validation.watch({ nodeId: msg.nodeId, widget: msg.widget, tabId: msg.tabId })
+      .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
+    return true;
+  }
+  if (msg.type === 'validationUnwatch') {
+    globalThis.Validation.unwatch({ id: msg.id, nodeId: msg.nodeId, widget: msg.widget })
+      .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
+    return true;
+  }
+  if (msg.type === 'validationWatches') {
+    globalThis.Validation.watches()
+      .then((w) => sendResponse({ watches: w })).catch((e) => sendResponse({ error: e.message }));
+    return true;
+  }
+  if (msg.type === 'validationStatus') {
+    // Who holds the wheel. Anything drawing on the page should ask before it
+    // acts, and so should the agent.
+    sendResponse(globalThis.Validation.status());
+    return false;
+  }
+
+  if (msg.type === 'validationTrace') {
+    // Reading the record. `nodeId` is the whole point of it: a lookup by the
+    // decision rather than a scan of a click list.
+    (async () => {
+      try {
+        const T = globalThis.Validation.trace;
+        const entries = msg.nodeId != null ? await T.at(msg.nodeId)
+          : msg.since != null ? await T.since(msg.since)
+          : await T.all();
+        sendResponse({ entries, where: globalThis.Validation.where() });
+      } catch (e) { sendResponse({ error: e.message }); }
+    })();
+    return true;
+  }
+  if (msg.type === 'validationWhy') {
+    // Reads the trace and calls no model. Note what it does NOT do: going back
+    // to a decision does not undo anything that already happened on the site.
+    globalThis.Validation.why({ nodeId: msg.nodeId, step: msg.step })
+      .then(sendResponse).catch((e) => sendResponse({ error: e.message }));
     return true;
   }
 
@@ -1321,8 +1687,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'bhAgentStop') {
-    globalThis.BrowserAgent?.stop();
+    globalThis.ValidationController?.cancel();
+    // The reason travels with the stop so the run's own record says what
+    // ended it. Absent one, the agent falls back to "Stopped by user", which
+    // is what a press of the stop button is.
+    globalThis.BrowserAgent?.stop(msg.reason);
     sendResponse({ success: true });
+    return false;
+  }
+
+  // Held, not ended. Sits next to stop because it is the same question asked
+  // less finally, and because a surface offering one should offer the other.
+  if (msg.type === 'bhAgentPause') {
+    sendResponse(globalThis.BrowserAgent?.pause?.({
+      reason: msg.reason, byNode: msg.nodeId,
+    }) || { paused: false, why: 'agent not loaded' });
+    return false;
+  }
+
+  if (msg.type === 'bhAgentResume') {
+    sendResponse(globalThis.BrowserAgent?.resume?.({
+      rePerceive: msg.rePerceive !== false,
+    }) || { resumed: false, why: 'agent not loaded' });
+    return false;
+  }
+
+  if (msg.type === 'bhAgentPauseState') {
+    sendResponse(globalThis.BrowserAgent?.pauseState?.() || { paused: false });
     return false;
   }
 
@@ -2103,13 +2494,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
       sendResponse({ started: true, count: actions.length });
+      let previousTaskId = null;
       for (const action of actions) {
         if (globalThis.BrowserAgent.isRunning()) break;
         try {
           console.log(`[AgenticA11y] Running skill action: ${action.name || action.prompt}`);
-          await globalThis.BrowserAgent.run(action.prompt, { tabId: msg.tabId ?? null });
+          const result = await globalThis.ValidationController.start({ task: action.prompt,
+            tabId: msg.tabId ?? null, awaitCompletion: true, previousTaskId });
+          if (!result.completed) break;
+          previousTaskId = result.taskId;
         } catch (e) {
           console.warn(`[AgenticA11y] Skill action failed: ${e.message}`);
+          break;
         }
       }
     })();
@@ -2133,13 +2529,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
       sendResponse({ started: true, count: actions.length });
+      let previousTaskId = null;
       for (const action of actions) {
         if (globalThis.BrowserAgent.isRunning()) break;
         try {
           console.log(`[AgenticA11y] Running profile action: ${action.name || action.prompt}`);
-          await globalThis.BrowserAgent.run(action.prompt, { tabId: senderTabId });
+          const result = await globalThis.ValidationController.start({ task: action.prompt,
+            tabId: senderTabId, awaitCompletion: true, previousTaskId });
+          if (!result.completed) break;
+          previousTaskId = result.taskId;
         } catch (e) {
           console.warn(`[AgenticA11y] Profile action failed: ${e.message}`);
+          break;
         }
       }
     })();

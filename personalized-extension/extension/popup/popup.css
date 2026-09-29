@@ -60,6 +60,7 @@ header {
 }
 .switch input:checked + .switch-track { background: var(--blue); }
 .switch input:checked + .switch-track::before { transform: translateX(16px); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--blue); outline-offset: 2px; }
 .switch.small { width: 32px; height: 18px; }
 .switch.small .switch-track::before { height: 14px; width: 14px; }
 .switch.small input:checked + .switch-track::before { transform: translateX(14px); }
@@ -421,7 +422,8 @@ footer {
   background: var(--grey-100); color: var(--grey-500);
   text-transform: uppercase; letter-spacing: 0.4px;
 }
-.agent-status[data-status="running"] { background: var(--blue-light); color: var(--blue); }
+.agent-status[data-status="running"],
+.agent-status[data-status="preparing"] { background: var(--blue-light); color: var(--blue); }
 .agent-status[data-status="done"]    { background: var(--green-light); color: var(--green); }
 .agent-status[data-status="error"]   { background: #fce8e6; color: var(--red); }
 .agent-status[data-status="stopped"] { background: var(--grey-200); color: var(--grey-700); }
@@ -563,3 +565,9 @@ footer {
   position: absolute; width: 1px; height: 1px; margin: -1px;
   padding: 0; overflow: hidden; clip: rect(0 0 0 0); border: 0;
 }
+
+/* The one switch for checking the agent's work. */
+.agent-check-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 8px 0 4px; }
+.agent-check-row .switch { flex-shrink: 0; }
+.agent-check-label { font-size: 13px; font-weight: 500; cursor: pointer; }
+.agent-check-hint { flex-basis: 100%; margin: 0 0 0 40px; font-size: 12px; color: var(--grey-700); }
