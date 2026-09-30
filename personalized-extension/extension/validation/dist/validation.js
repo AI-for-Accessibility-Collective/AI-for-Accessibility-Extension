@@ -6518,7 +6518,7 @@ Include every id once. moneyMoving means the guarded step commits money, sends/s
       if (result.kind === "unknown" && !target && action?.action !== "navigate") {
         const identity = JSON.stringify(["target", snap.url, hash]);
         const prior = runtimeState.actionCorrections.find((c) => c.identity === identity);
-        if ((prior?.attempts || 0) < 2) {
+        if ((prior?.attempts || 0) < 5) {
           if (prior) prior.attempts++;
           else runtimeState.actionCorrections.push({ identity, attempts: 1 });
           runtimeState.actionCorrections = runtimeState.actionCorrections.slice(-32);

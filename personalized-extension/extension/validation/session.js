@@ -1910,11 +1910,11 @@ const Validation = {
     if (result.kind === 'unknown' && !target && action?.action !== 'navigate') {
       // The element the agent named is not on the page any more, usually
       // because the form changed after it planned. That is the agent's to fix
-      // by looking again, not a question for the person. Twice per page, then
-      // the person is offered the step as before.
+      // by looking again, not a question for the person, who cannot fix it
+      // either. Up to five times per page, then the person is offered the step.
       const identity = JSON.stringify(['target', snap.url, hash]);
       const prior = runtimeState.actionCorrections.find(c => c.identity === identity);
-      if ((prior?.attempts || 0) < 2) {
+      if ((prior?.attempts || 0) < 5) {
         if (prior) prior.attempts++;
         else runtimeState.actionCorrections.push({ identity, attempts: 1 });
         runtimeState.actionCorrections = runtimeState.actionCorrections.slice(-32);
