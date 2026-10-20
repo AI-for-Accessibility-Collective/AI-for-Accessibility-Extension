@@ -1,30 +1,35 @@
 # Getting help
 
-This is a research project, so there is no support team and no response
-promise — but we do read what comes in, and reports of what worked and
-what didn't are exactly what the research needs.
+This repository has the browser extensions. For help with the developer
+toolkit, see the toolkit repository's
+[SUPPORT.md](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/SUPPORT.md).
 
-**Before asking:**
+## Docs
 
-1. [Getting Started](docs/GETTING-STARTED.md) — install, updating,
-   removing, first-success checks.
-2. [Troubleshooting](docs/TROUBLESHOOTING.md) — common problems; the
-   later sections are for developers.
-3. [What to expect](docs/WHAT-TO-EXPECT.md) — known limits, so you can
-   tell a bug from a boundary.
+- [Getting Started](docs/GETTING-STARTED.md): installing, updating and
+  removing the extensions
+- [Troubleshooting](docs/TROUBLESHOOTING.md): common problems (the later
+  sections are for developers)
+- [What to expect](docs/WHAT-TO-EXPECT.md): what the extensions can't do yet
 
-**To report a problem or share what happened:** open an issue on this
-repository. Say what page you were on, what you clicked, what you
-expected, and what you saw. Screenshots help if they're comfortable for
-you to make.
+## Questions and bugs
 
-**If GitHub itself is a barrier**, we want to know that too.
-If you are unable to report a problem through GitHub, please email the
-Collective contact listed in [MAINTAINERS.md](MAINTAINERS.md).
+Open an issue on this repository. Please tell us what page you were on, what
+you clicked, what you expected and what happened instead. Screenshots help if
+you can take them.
 
-**Security problems** are the one thing that should *not* go in a public
-issue — see [SECURITY.md](SECURITY.md).
+If you'd rather not use GitHub, you can email us (the address is in
+[MAINTAINERS.md](MAINTAINERS.md)).
 
-Remember: this tool is not a replacement for your screen reader,
-magnifier, or other assistive technology, and "it stopped working" is a
-real possibility with research software. Keep what works for you.
+## Security problems
+
+Please don't open a public issue. See [SECURITY.md](SECURITY.md).
+
+## Feedback
+
+If you tried the extensions, we'd like to know what worked and what didn't.
+You can open an issue or email us.
+
+The extensions don't replace your screen reader, magnifier or other assistive
+technology. They may also stop working at times, so please keep using your
+usual tools alongside them.

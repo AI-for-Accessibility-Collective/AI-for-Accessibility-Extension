@@ -1,154 +1,147 @@
-# Getting started — a guide for people, not programmers
+# Getting started
 
-This guide walks you through trying the AI for Accessibility extension,
-start to finish, assuming you have never used GitHub or installed an
-extension from a folder before. It covers the same steps as the main
-README, in greater detail.
+This guide shows how to install and try the AI for Accessibility extensions in
+Chrome, step by step. You don't need to know how to code or how to use
+GitHub.
 
-First, please note: **this is a research project, not a finished
-product.** It is an early test version. Things may break or change, and
-we haven't yet formally tested how well the page fixes work for any
-particular person. Keep using the assistive technology you rely on — this
-adds to it; it does not replace it.
+This is an early research version. Things may break or change, and we haven't
+tested yet how well it works for any particular person. Keep using the
+assistive technology you rely on, such as your screen reader or magnifier.
 
 ## What you need
 
-- A **computer** — Windows, Mac, or Linux. Not a phone or tablet.
-- **Google Chrome**, reasonably up to date (version 120 or newer for the
-  personalized extension's custom adapters).
-- About **ten minutes**.
-- Optional, only for the AI features: a **Google account**.
+- A computer with Windows, Mac or Linux (not a phone or tablet)
+- Google Chrome, version 120 or later
+- About ten minutes
+- *(Optional)* A Google account, for the AI features
 
-## What you get
+## The two extensions
 
-Two extensions live in this project. Start with the first.
-
-- **The original extension** — pick a profile (like Low Vision or
-  Dyslexia) and pages change to match: bigger text, dark mode, calmer
-  motion, decluttered reading, and more. Simple and predictable.
-- **The personalized extension** — asks about your needs in your own
-  words, learns from what you change, suggests things, and can build new
-  page fixes for you. More powerful, more experimental.
+- The original extension: pick a profile (e.g., Low Vision or Dyslexia) and
+  pages change to match, e.g., bigger text, dark mode, less motion or a
+  cleaner reading view. We recommend starting with this one.
+- The personalized extension: you describe your needs in your own words, and
+  it learns from what you change, suggests changes, and can make new page
+  fixes for you. It is more experimental.
 
 ## Installing the original extension
 
-1. **Download the project.** On the project's GitHub page, select the
-   green **Code** button near the top, then **Download ZIP**.
+1. Download the project. On the project's GitHub page, click the green
+   **Code** button near the top, then **Download ZIP**.
 
    ![The GitHub repository page with the green Code button's menu open. Download ZIP is the last item in the menu, below Open with GitHub Desktop.](images/getting-started/01-download-zip.png)
-2. **Unpack it.** Open your Downloads folder and double-click the ZIP
-   file. You get a folder named `AI-for-Accessibility-Extension-main`.
-3. **Open Chrome's extensions page.** In Chrome, click into the address
-   bar (the box where web addresses go), type `chrome://extensions`, and
-   press Enter.
-4. **Turn on Developer mode.** Use the switch in the top-right corner.
-   This is a normal Chrome setting that allows installing extensions from
-   a folder instead of the Chrome Web Store. It is allowed and
-   reversible. Chrome may occasionally remind you that a developer-mode
-   extension is running — that reminder is expected.
+
+2. Unzip it. Open your Downloads folder and double-click the ZIP file. You'll
+   get a folder named `AI-for-Accessibility-Extension-main`.
+
+3. Open Chrome's extensions page. Click the address bar, type
+   `chrome://extensions` and press Enter.
+
+4. Turn on **Developer mode** with the switch in the top-right corner. This
+   lets you install an extension from a folder. You can turn it off again
+   later, and Chrome may sometimes remind you that it's on.
 
    ![The chrome://extensions page with the Developer mode switch at the top right turned on, marked with a red arrow.](images/getting-started/02-developer-mode.png)
-5. **Load it.** Select **Load unpacked**. In the file window that opens,
-   open the `AI-for-Accessibility-Extension-main` folder, click once on
-   the folder inside it named `extension`, and confirm.
+
+5. Click **Load unpacked**. In the window that opens, open the
+   `AI-for-Accessibility-Extension-main` folder, click once on the `extension`
+   folder inside it, and confirm.
 
    ![The unpacked AI-for-Accessibility-Extension-main folder in the file window, with the folder named extension selected.](images/getting-started/03-select-extension-folder.png)
 
-   - If Chrome complains that a **manifest** is missing, you picked the
-     wrong folder — open it and pick the `extension` folder inside.
-6. **See it work.** A new icon appears to the right of the address bar
-   (you may need to click the puzzle-piece icon to find and pin it).
+   If Chrome says the manifest is missing, you picked the outer folder. Open
+   it and pick the `extension` folder inside.
+
+6. Pin the icon. Click the puzzle-piece icon to the right of the address bar,
+   then click the pin next to **Agentic A11y**.
 
    ![Chrome's Extensions menu opened from the puzzle-piece button, which is marked with a red box; the Agentic A11y row and its pin button are highlighted in the list.](images/getting-started/04-icon-pinned.png)
 
-   Open
-   a news article — any longer written page — click the icon, and choose
-   **Low Vision**. The page should change right away: bigger text, more
-   spacing. That's success. Choose **Reset** or toggle the profile off to
-   put the page back.
+7. Try it. Open a news article or any long page, click the icon and choose
+   **Low Vision**. The text should get bigger and more spaced out right away.
+   To put the page back, click **Reset** or turn the profile off.
 
-## The AI features, and the key they need
+## AI features
 
-Everything above works with no account and no cost. Some features ask an
-AI to write something new — describing pictures, captioning videos,
-rewriting complicated text more simply, translating. Those need a
-**Gemini API key**: a password-like code from Google that lets the
-extension use Google's AI as you.
+Everything above works without an account and costs nothing. Some features
+use AI, e.g., describing pictures, captioning videos, simplifying text and
+translating. These need a Gemini API key, which is a code from Google that
+lets the extension use Google's AI on your behalf.
 
-Whether and what this costs, and how to get and enter the key, has its
-own plain-language page: [COSTS.md](COSTS.md). The short version: Google
-gives everyone a free daily allowance, and many people stay inside it.
+Google gives everyone a free daily allowance, and many people stay within it.
+[COSTS.md](COSTS.md) explains what it costs and how to get and enter a key.
 
-## Is my information safe?
+## Your information
 
-The short version: what the extension learns about you stays on your
-computer; page content goes to Google's AI only when you use an AI
-feature with your own key; nothing is sold or sent to advertisers. The
-full plain-language answer is [DATA-AND-PRIVACY.md](DATA-AND-PRIVACY.md),
-and the honest what-could-go-wrong list is
-[WHAT-TO-EXPECT.md](WHAT-TO-EXPECT.md) — worth five minutes before you
-rely on anything here.
+What the extension learns about you stays on your computer. Page content is
+sent to Google's AI only when you use an AI feature with your own key, and
+nothing is sold or sent to advertisers. For more, see
+[DATA-AND-PRIVACY.md](DATA-AND-PRIVACY.md) and
+[WHAT-TO-EXPECT.md](WHAT-TO-EXPECT.md), which lists what could go wrong.
 
-## Trying the personalized extension
+## Installing the personalized extension
 
-Ready for the experimental one? Repeat the Load-unpacked steps, but in
-step 5 choose the folder `personalized-extension`, then `extension`
-inside it.
+1. Follow steps 1 to 5 above, but in step 5 open the `personalized-extension`
+   folder and pick the `extension` folder inside it.
 
-![The personalized-extension folder open in the file window, with the folder named extension inside it selected.](images/getting-started/05-select-personalized-folder.png)
+   ![The personalized-extension folder open in the file window, with the folder named extension inside it selected.](images/getting-started/05-select-personalized-folder.png)
 
-Keep Developer mode on — the custom page fixes it builds for
-you only run while it is. In newer versions of Chrome (138 and later)
-there is one more switch: on the extension's **Details** page at
-`chrome://extensions`, turn on **Allow User Scripts**.
+2. Keep Developer mode on. The page fixes it makes for you only run while
+   it's on.
 
-It starts with onboarding: describe your needs in your own words, pick
-what sounds useful, and go. It suggests; you decide. Nothing about your
-profile changes without your yes.
+3. If you have Chrome 138 or later, click **Details** on the extension's card
+   at `chrome://extensions` and turn on **Allow User Scripts**.
 
-The personalized extension also has a browser agent that can do a task
-for you, like booking a room or returning an order. It works on its own
-unless you turn on **Check the agent's work**, a switch in the popup
-under Browser Agent and at the top of the side panel. With it on, the
-extension reads your request and each page the agent visits, asks you
-before choices it should not make for you, and holds anything that pays,
-books, sends or deletes until you say yes. For example, if a hotel total
-comes out above the budget you gave, it asks whether to raise the budget
-or look somewhere else. A task takes about 15 seconds longer to start
-while it prepares, and it uses the same Gemini key as the agent.
+When it starts, it asks you to describe your needs in your own words and pick
+what sounds useful. It only suggests changes to your profile, and nothing
+changes until you say yes.
+
+### The browser agent
+
+The personalized extension also has a browser agent that can do a task for
+you, e.g., booking a room or returning an order. To have the extension check
+the agent's work, turn on **Check the agent's work** in the popup under
+Browser Agent, or in the side panel.
+
+With it on, the extension reads your request and each page the agent visits,
+asks you when there is a choice to make (e.g., which room to book), and checks
+with you before it pays, books, sends or deletes anything. For example, if a hotel
+costs more than the budget you gave, it asks whether to raise the budget or
+look somewhere else. Tasks take about 15 seconds longer to start, and it uses
+the same Gemini key as the agent.
 
 ## Updating
 
-A folder install does not update itself. When a new version is announced,
-download the ZIP again, replace your old folder with the new one, and
-click the refresh arrow on the extension's card at `chrome://extensions`.
+The extension doesn't update itself. When there is a new version, download
+the ZIP again, replace your old folder with the new one, and click the refresh
+arrow on the extension's card at `chrome://extensions`.
 
-## Removing it, completely
+## Removing it
 
 1. Type `chrome://extensions` in the address bar and press Enter.
-2. On the extension's card, select **Remove** and confirm.
+
+2. On the extension's card, click **Remove** and confirm.
 
    ![The Agentic A11y card at chrome://extensions, with the Remove button highlighted by a red box.](images/getting-started/06-remove-extension.png)
 
-That deletes what it stored on this computer, including everything it
-learned about you. If you entered an API key and want it gone from
-Google's side too, delete the key at
-[Google AI Studio](https://aistudio.google.com/apikey).
+This deletes everything it stored on your computer, including what it learned
+about you. If you entered an API key and want to delete it from Google too,
+delete it at [Google AI Studio](https://aistudio.google.com/apikey).
 
-## When something goes wrong
+## If something goes wrong
 
-The most common problems, in order:
+1. Chrome says the manifest is missing: you picked the outer folder in step 5.
+   Pick the `extension` folder inside it.
 
-1. **Chrome said "manifest missing".** You picked the outer folder during
-   Load unpacked — pick the `extension` folder inside it.
-2. **The icon does nothing / the page doesn't change.** Reload the
-   extension (refresh arrow on its card), then reload the page. Some
-   pages (Chrome's own pages, the Chrome Web Store) don't allow
-   extensions at all; try a news article.
-3. **AI features say the key is missing or over the limit.** See
-   [COSTS.md](COSTS.md); the free allowance resets daily.
-4. **Everything else:** [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (its
-   later sections are written for developers — that's normal, stop where
-   it stops making sense), or open an issue on the repository telling us
-   what you clicked and what you saw. If GitHub itself is the barrier,
-   we want to know that too.
+2. The icon does nothing or the page doesn't change: click the refresh arrow
+   on the extension's card, then reload the page. Some pages don't allow
+   extensions at all, e.g., Chrome's own pages and the Chrome Web Store, so
+   try a news article.
+
+3. The AI features say the key is missing or over the limit: see
+   [COSTS.md](COSTS.md). The free allowance resets every day.
+
+4. Anything else: see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (its later
+   sections are for developers), or open an issue telling us what you clicked
+   and what you saw. If you'd rather not use GitHub, see
+   [SUPPORT.md](../SUPPORT.md) for how to email us.
