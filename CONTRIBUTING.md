@@ -1,157 +1,110 @@
 # Contributing
 
-This repository holds the browser-facing half of the project: the two Chrome
-extensions and the prototype web apps. The tools catalog and the toolkit core
-they are built from live in the
-[toolkit repository](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit),
-so the first question is which repo your contribution belongs in.
+This repository has the browser extensions and prototype web apps built on the
+[AI for Accessibility Toolkit](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit).
 
-## Which repo does my contribution go to?
+| Folder | What's in it |
+|---|---|
+| `extension/` | The original extension: popup, background and content script |
+| `personalized-extension/` | The personalized extension: onboarding, memory, voice mode, the Adapter Builder and Skill Builder, the browser harness and the validation layer |
+| `webapp/` | Prototype web apps that control the browser by voice or typed commands |
 
-| I want to... | Where |
-|--------------|-------|
-| **Find an issue** (new auditor) | Toolkit repo → `tools/auditors/` |
-| **Fix an issue** (new adapter) | Toolkit repo → `tools/adapters/` |
-| **Combine adapters for a need** (new skill) | Toolkit repo → `toolkit/skills/builtin/` |
-| **Add or tune a profile** | Toolkit repo → `tools/profiles/settings.json` |
-| **Work on the skill engine** (the Engineer, `skill-builder.js`) | Toolkit repo → `toolkit/core/` |
-| **Change the extension UI** (popup, background, content script) | Here → `extension/` |
-| **Work on the Adapter Builder or Skill Builder UI, onboarding, memory, or voice mode** | Here → `personalized-extension/` |
-| **Work on the web app prototypes** | Here → `webapp/` |
+## Ways to contribute
 
-Rule of thumb from the catalog side: **need a new primitive → adapter (code);
-need a new recipe → skill (no code).** A skill only composes adapters that
-already exist. Both are toolkit-repo contributions; this repo picks them up
-through its built bundles.
+### Share feedback
 
-## Contributions we're looking for
+Try one of the extensions on pages you use, then open an issue about where it
+helped and where it got things wrong. If you'd rather not use GitHub, you can
+email us instead (see [SUPPORT.md](SUPPORT.md)).
 
-Code is not the only kind. Right now, useful contributions here include:
+### Improve the extensions
 
-- **Real-page reports.** Try an extension on pages you actually use and
-  tell us where adaptations helped, failed, or misfired. This is research
-  data, not just bug reporting.
-- **Documentation for people, not programmers** — plainer wording,
-  screenshots with good alt text for the install guide, translations.
-- **Accessibility fixes to this repository itself** — image alt text,
-  heading structure, diagrams that read well in a screen reader.
-- **Extension UI work** — see the table above and open issues.
+Fix a bug or improve something in one of the folders above. For bigger
+changes, please open an issue first.
 
-New adapters, auditors, profiles, and skills are wanted too — in the
-toolkit repository, where its CONTRIBUTING lists what is most useful.
+### Add a skill, adapter, auditor or profile
 
-## Set up
+These live in the toolkit repository, so add them there (see its
+[CONTRIBUTING.md](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/CONTRIBUTING.md)).
+The extensions here include them after we update the copy of the toolkit in
+`vendor/`.
+
+## Setting up
+
+1. Install [Node.js](https://nodejs.org/) 20.19 or later.
+
+2. Clone your fork.
 
 ```bash
-git clone <your fork of this repository>
+git clone <your fork>
+cd AI-for-Accessibility-Extension
 ```
 
-No build step is needed to run what is here: the bundles are committed.
+3. Load an extension in Chrome. Open `chrome://extensions`, turn on
+   **Developer mode**, click **Load unpacked** and choose `extension/` or
+   `personalized-extension/extension/`.
 
-- Chrome: `chrome://extensions` → Developer mode on → **Load unpacked** → `extension/`
-- Personalized extension: **Load unpacked** → `personalized-extension/extension/` (keep Developer mode on; its generated adapters run as user scripts)
+You can load the extensions without building anything first. Keep Developer
+mode on for the personalized extension, as the adapters it generates run as
+user scripts.
 
-## The registry and settings vocabulary
+## Building
 
-The canonical registry moved into the toolkit:
-[`personalized-extension/skills/registry.js`](personalized-extension/skills/registry.js)
-is now a one-line re-export of `@ai4a11y/toolkit/registry`, whose
-`settingsMeta` is the full settings vocabulary — every key, its type, and
-its valid range — and is what `validateSkill` checks recipes against. When
-an adapter lands in the toolkit repo's catalog, it becomes available here
-through a one-line re-export in `personalized-extension/skills/builtin/`;
-its registry entry (`supportAreas`, `settings`, a one-line `description`,
-`quickStart: true` for fast onboarding) is made in the toolkit repo's
-`toolkit/registry/tools.js`.
+If you change code that goes into a bundle, rebuild and commit the output.
 
-Note: the re-export files and the full builds resolve the toolkit code from
-the vendored `@ai4a11y/toolkit` and `@ai4a11y/tools` packages, so the
-bundles rebuild here: `npm ci` in both roots, then `npm run build`. Commit
-the rebuilt outputs with your change; CI fails on stale bundles. See
-"Builds and tests" in the README.
+```bash
+npm ci
+npm --prefix personalized-extension ci
+npm run build
+```
+
+Don't edit `*.bundle.js` files or files in `personalized-extension/extension/lib/`
+by hand. CI checks that the committed files match a fresh build.
 
 ## Testing
 
+These two need no install:
+
 ```bash
-npm test   # Librarian regression suite (86 checks, no install needed)
+npm test                  # Librarian tests
+npm run check:loadable    # both extensions load from this checkout
 ```
 
-`personalized-extension/test/verifier-test.mjs` also runs here, now that
-its imports resolve from the vendored packages; CI runs it. Two browser
-tests need a local Chromium and are skipped in CI —
-`personalized-extension/test/skills-page-test.js` and `demo-beats-e2e.js`.
-Run them locally if you touched the Skill Builder page or the demo.
+After installing (see Building), you can also run:
 
-Then try your change on real pages: load the extension and use it. Test on
-more than one kind of page (an article, a form, a data table).
+```bash
+node personalized-extension/test/verifier-test.mjs
+npm --prefix personalized-extension test
+```
 
-## PR Guidelines
+If you changed a manifest, a service worker or a bundle, also run
+`npm run check:chrome` (needs Chrome and the install from Building).
 
-- One feature per PR
-- Test on real sites
-- `npm test` and `npm run check:loadable` must pass; both run on a bare
-  checkout with no install
-- If you touched a manifest, a service worker or a committed bundle, run
-  `npm run check:chrome` too (needs Chrome and one `npm ci`)
-- Describe who benefits (which disability/profile)
-- The committed bundles are the runnable state. Do not hand-edit a
-  `*.bundle.js` or a generated `personalized-extension/extension/lib/` file;
-  if your change affects them, rebuild (`npm run build`) and commit the
-  outputs, or CI fails on the drift
+Then try your change in Chrome on a few kinds of pages, e.g., an article, a
+form and a data table.
 
-## What to expect from review
+## Pull requests
 
-This is a time-boxed research project. During the active phase we review
-as capacity allows; afterwards, review may be slow or paused while
-longer-term maintainership is defined (see the toolkit repository's
-ROADMAP, Governance). An unreviewed PR is a statement about our capacity,
-not about your contribution.
+Keep each PR to one change, and make sure `npm test` and
+`npm run check:loadable` pass. When you open a PR, GitHub fills in our
+template, which asks:
 
-## Forks and spin-offs
+- What does this PR do?
+- Which parts does it affect?
+- Who does it help?
+- How did you test it?
+- If it changes a committed bundle, which build made it?
 
-This project is a research probe with a deliberately small core. We do not
-expect — or want — every idea to land in this repository. If it is useful
-to you but you need it to go somewhere we aren't going, **fork it. That's
-a success, not a defection.**
+## Working with people with disabilities
 
-What we ask in return is the learnings. If your fork or spin-off teaches
-you something — an adapter that worked, a design that didn't, a need the
-ability model can't express, results from testing with the people you
-built it for — open an issue or a short write-up telling us what you
-found. Code back is welcome; understanding back is the part we can't get
-any other way.
+- Involve people with disabilities in designing and testing what you build.
+- Pay participants.
+- Be careful with profile data, as it can reveal someone's disability.
+- Don't create ability profiles without input from the community they are
+  meant for.
 
-Practical notes for forkers:
+## Questions
 
-- The Apache 2.0 license already permits all of this; this section is an
-  invitation, not a condition.
-- Please rename your fork enough that people don't mistake it for this
-  project, and keep the "research probe, not validated, not a replacement
-  for assistive technology" framing anywhere you inherit our claims.
-- If you want your project listed alongside the others building on the
-  toolkit, add it to the toolkit repository's `docs/projects.md` by pull
-  request.
+See [SUPPORT.md](SUPPORT.md) for how to reach us.
 
-How outside contributions and forks will be handled longer term
-(custodianship, reconciling forks) is still being defined; this section
-will be updated when it is.
-
-## Code Style
-
-- ES modules, bundled by esbuild
-- Use the AI provider abstraction for AI features (`utils/ai.js` in the
-  `@ai4a11y/tools` package; canonical source in the toolkit repo)
-- Document which profiles/disabilities the feature helps
-- No large binaries — use Git LFS or link externally
-
-## Ethics
-
-- People with disabilities must be involved in design and evaluation
-- Compensate participants
-- Handle user profiles and personalization data carefully
-- Don't simulate ability profiles without community input
-
-## Questions?
-
-Open an issue on this repository (or the toolkit repository's, per the
-table above). Current contact routes: [MAINTAINERS.md](MAINTAINERS.md).
+Thank you for your contributions!

@@ -215,8 +215,7 @@ PR, say who benefits (which disability or profile), and involve people with
 disabilities in design and evaluation. Building accessibly remains the page
 author's responsibility; this project fixes barriers in pages, it does not
 remove the reason to avoid creating them. Forks and spin-off versions are
-part of how this project is meant to be used — see "Forks and spin-offs"
-in [CONTRIBUTING.md](CONTRIBUTING.md).
+part of how this project is meant to be used.
 
 ### Security & License
 

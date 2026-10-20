@@ -5,12 +5,12 @@ When a route changes, it changes here.
 
 ## Current routes
 
-| Purpose | Route |
+| For | Contact |
 |---|---|
-| Bugs, questions, feedback | This repository's [issues](../../issues) |
-| Security disclosure | GitHub private vulnerability reporting (Security tab) |
-| Code of conduct reports | Email the Collective's current PMO contact point: josephine.chu@dalberg.com |
-| Everything else | Email the Collective's current PMO contact point: josephine.chu@dalberg.com |
+| Bugs, questions and feedback | This repository's [issues](../../issues) |
+| Security problems | **Report a vulnerability** on this repository's Security tab (see [SECURITY.md](SECURITY.md)) |
+| Code of conduct reports | josephine.chu@dalberg.com, the Collective's project management contact |
+| Anything else | josephine.chu@dalberg.com |
 
 ## Current maintainers
 
