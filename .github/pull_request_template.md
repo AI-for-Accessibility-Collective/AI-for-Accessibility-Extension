@@ -8,7 +8,7 @@
 - [ ] Personalized extension (`personalized-extension/`)
 - [ ] Adapter Builder or Skill Builder (`personalized-extension/extension/adapter-builder/`, `personalized-extension/extension/skill-builder/`)
 - [ ] Browser harness (`personalized-extension/extension/browser-harness/`)
-- [ ] Validation layer (`personalized-extension/extension/validation/`)
+- [ ] Verification layer (`personalized-extension/extension/validation/`)
 - [ ] Web apps (`webapp/`)
 - [ ] Docs
 

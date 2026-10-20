@@ -6,7 +6,7 @@ This repository has the browser extensions and prototype web apps built on the
 | Folder | What's in it |
 |---|---|
 | `extension/` | The original extension: popup, background and content script |
-| `personalized-extension/` | The personalized extension: onboarding, memory, voice mode, the Adapter Builder and Skill Builder, the browser harness and the validation layer |
+| `personalized-extension/` | The personalized extension: onboarding, memory, voice mode, the Adapter Builder and Skill Builder, the browser harness and the verification layer |
 | `webapp/` | Prototype web apps that control the browser by voice or typed commands |
 
 ## Ways to contribute
@@ -108,7 +108,7 @@ here:
 - [ ] Personalized extension (`personalized-extension/`)
 - [ ] Adapter Builder or Skill Builder (`personalized-extension/extension/adapter-builder/`, `personalized-extension/extension/skill-builder/`)
 - [ ] Browser harness (`personalized-extension/extension/browser-harness/`)
-- [ ] Validation layer (`personalized-extension/extension/validation/`)
+- [ ] Verification layer (`personalized-extension/extension/validation/`)
 - [ ] Web apps (`webapp/`)
 - [ ] Docs
 
