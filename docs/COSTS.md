@@ -1,7 +1,7 @@
 # What it costs to use
 
 Many features of the extensions are free and run only on your computer. Some
-use an AI service, which can cost money. This page explains which is which.
+use an AI service, which can cost money.
 
 ## Free features
 

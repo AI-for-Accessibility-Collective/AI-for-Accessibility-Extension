@@ -1,8 +1,7 @@
 # Getting started
 
-This guide shows how to install and try the AI for Accessibility extensions in
-Chrome, step by step. You don't need to know how to code or how to use
-GitHub.
+You can install and try the AI for Accessibility extensions in Chrome without
+knowing how to code or how to use GitHub.
 
 This is an early research version. Things may break or change, and we haven't
 tested yet how well it works for any particular person. Keep using the

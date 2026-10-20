@@ -60,9 +60,8 @@ We aim to reply within a week.
 
 ## Where your data is
 
-A plain-language version of this section is in
-[docs/DATA-AND-PRIVACY.md](docs/DATA-AND-PRIVACY.md). If the two ever
-disagree, this page is correct.
+[docs/DATA-AND-PRIVACY.md](docs/DATA-AND-PRIVACY.md) explains this in plainer
+words. If the two ever disagree, go by this page.
 
 - Synced through your Google account (`chrome.storage.sync`, which copies it
   to every Chrome browser signed into the same account): your ability profile, suggestion

@@ -23,8 +23,7 @@ went wrong. If you'd rather not use GitHub, you can email us instead (see
 The extensions' code is in the folders above. For example, you could fix a bug
 in the popup (`extension/src/popup/`) or in the Skill Builder
 (`personalized-extension/extension/skill-builder/`). Look through the
-[open issues](../../issues), or fix something you ran into. For bigger changes,
-please open an issue first.
+[open issues](../../issues), or fix something you ran into.
 
 ### Add a skill, adapter, auditor or profile
 
@@ -93,14 +92,38 @@ form and a data table.
 ## Pull requests
 
 Keep each PR to one change, and make sure `npm test` and
-`npm run check:loadable` pass. When you open a PR, GitHub fills in our
-template, which asks:
+`npm run check:loadable` pass.
 
-- What does this PR do?
-- Which parts does it affect?
-- Who does it help?
-- How did you test it?
-- If it changes a committed bundle, which command built it, and in which repository?
+GitHub fills in this template when you open a PR. You can also copy it from
+here:
+
+```markdown
+## What does this PR do?
+
+## Which parts of the repository does it change?
+
+- [ ] Original extension (`extension/`)
+- [ ] Personalized extension (`personalized-extension/`)
+- [ ] Adapter Builder or Skill Builder (`personalized-extension/extension/adapter-builder/`, `personalized-extension/extension/skill-builder/`)
+- [ ] Browser harness (`personalized-extension/extension/browser-harness/`)
+- [ ] Validation layer (`personalized-extension/extension/validation/`)
+- [ ] Web apps (`webapp/`)
+- [ ] Docs
+
+## Who does it help?
+
+Which needs or profiles does this help?
+
+## How did you test it?
+
+- [ ] `npm test` and `npm run check:loadable` pass
+- [ ] I loaded the extension in Chrome and tried the change on a few real pages
+- [ ] If I changed a manifest or a service worker, `npm run check:chrome` passes
+- [ ] If I changed code that goes into a bundle, I ran `npm run build` and committed the rebuilt files
+```
+
+If you're planning a bigger change, e.g., a new feature in the personalized
+extension, please open an issue to discuss it before you start.
 
 ## Working with people with disabilities
 
