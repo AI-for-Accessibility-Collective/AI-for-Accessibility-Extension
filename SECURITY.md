@@ -1,92 +1,118 @@
-# Security Policy
+# Security policy
 
 This policy covers the Chrome extensions in this repository. The toolkit
-library and its hosted service have their own policy in the toolkit
-repository.
+library and its hosted service have their own policy in the
+[toolkit repository](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/SECURITY.md).
 
-## Read this before installing adapters
+## Before you install a custom adapter
 
-**Adapters you install can see and change everything on
-the pages they run on, including anything you type there. We check their
-code, but a checked adapter is not a contained one. Only install adapters
-from people you trust.**
+Custom adapters can read and change everything on the pages they run on,
+including anything you type there. We lint their code, but we don't sandbox
+them: they run as Chrome user scripts with full access to the page. Only
+install adapters from people you trust.
 
-Custom adapters are **linted but not sandboxed**. They are registered as
-Chrome user scripts and run with full access to every page they touch.
-Adapters are written to be reversible, which means their page changes can
-be undone; it does not limit what a malicious adapter could read or do
-while it runs.
+Turning an adapter off undoes its changes to the page. It doesn't undo
+anything a harmful adapter read or sent while it was running.
 
-## Supported Versions
+## Supported versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Latest  | :white_check_mark: |
+There are no releases yet, so only the latest `main` branch is supported.
 
-There are no tagged releases yet; until the first one, only the current
-state of the default branch is supported.
+## Reporting a vulnerability
 
-## Reporting a Vulnerability
+Please don't open a public issue.
 
-1. **Do not** open a public issue.
-2. Use GitHub's **Report a vulnerability** button on this repository's
-   Security tab (private vulnerability reporting).
-   If that is unavailable to you, email the maintainer contact listed in
+1. Go to this repository's **Security** tab and click **Report a
+   vulnerability**. If you can't, email the address in
    [MAINTAINERS.md](MAINTAINERS.md).
-3. Include: a description of the vulnerability, steps to reproduce, the
-   potential impact, and a suggested fix if you have one.
 
-We aim to acknowledge reports within a week. This is a research project;
-response capacity varies with the project phase, and we will be honest
-with you about timelines once we have your report.
+2. Include a description, steps to reproduce, the possible impact, and a fix
+   if you have one.
 
-## Security Considerations
+We aim to reply within a week.
 
-### API Keys and AI providers
+## API keys
 
-- Two optional provider keys are stored in `chrome.storage.sync`: a Gemini key and a Fal.ai key. Sync storage means a key follows you to other Chrome browsers signed into the same Google account
-- The Gemini key is transmitted only to Google's API endpoints over HTTPS. The Gemini API takes the key as a URL query parameter; avoiding that would need a proxy server, and this is a client-side extension by design
-- If you set a Fal.ai key, audio and video transcription tries Fal.ai first: the key travels in a request header to `https://fal.run`, together with the URL of the media to transcribe. Without a Fal.ai key, transcription uses Gemini alone
-- The extensions never log or transmit API keys anywhere else
+- The original extension stores two optional keys in `chrome.storage.sync`: a
+  Gemini key and a Fal.ai key. The personalized extension stores only a Gemini
+  key. Keys in sync storage follow you to other Chrome browsers signed into the
+  same Google account.
+- The Gemini key is only sent to Google's API, over HTTPS. The Gemini API takes
+  the key as a URL query parameter, and avoiding that would need a proxy
+  server.
+- If you set a Fal.ai key in the original extension, audio and video
+  transcription tries Fal.ai first. The key goes in a request header to
+  `https://fal.run`, along with the URL of the media. Without a Fal.ai key,
+  transcription uses Gemini only.
+- The extensions don't log or send API keys anywhere else.
 
-### Content Script Execution
+## Code that runs on pages
 
-- Content scripts run in an isolated world separate from page scripts
-- AI-generated text content uses `textContent` for safe DOM insertion
-- Reader mode sanitizes extracted HTML before `innerHTML` insertion (tag/attribute allowlist)
-- We do not use `eval()` or `document.write()`
+- Content scripts run in an isolated world, separate from the page's own
+  scripts.
+- AI-generated text is inserted with `textContent`.
+- Reader mode removes scripts, event handlers and links with executable
+  schemes (e.g., `javascript:`) from an article before inserting it with
+  `innerHTML`.
+- The extensions' own code doesn't use `eval()` or `document.write()`. Custom
+  adapters are the exception. The personalized extension runs their code as
+  user scripts, or with `new Function()` on older Chrome versions.
 
-### Data Handling
+## Where your data is
 
-A plain-language version of this section lives at
-[docs/DATA-AND-PRIVACY.md](docs/DATA-AND-PRIVACY.md); this inventory is
-the precise statement and wins if they ever disagree.
+A plain-language version of this section is in
+[docs/DATA-AND-PRIVACY.md](docs/DATA-AND-PRIVACY.md). If the two ever
+disagree, this page is correct.
 
-Where each kind of data lives:
+- Synced through your Google account (`chrome.storage.sync`, which copies it
+  to every Chrome browser signed into the same account): your ability profile, suggestion
+  suppressions, cross-app grants, extension settings, API keys, and the remote
+  server URL and token if remote mode is set up.
+- On this device only (`chrome.storage.local`): the memory (the observation
+  log, memory shards, pending proposals, the site index, rendered views and the
+  share-audit log) and saved skills.
+- Sent off the device only when you use a feature that needs it:
+  - page content to the Gemini API, when a key is set
+  - the needs you type during onboarding or in the builders, which go into the
+    prompts sent to the Gemini API
+  - microphone audio to the Gemini Live API, while voice mode is on
+  - media URLs to Fal.ai, when that key is set
+  - Librarian calls, including your profile, to your own server, when remote
+    mode is on
+- By default, nothing is remembered about you on banking, health and
+  government sites unless you turn it on for that site. The pages are still
+  adapted.
+- Remote mode is off by default. If you set a server URL and token in the
+  options page, Librarian calls, including your profile, go to that server. If
+  you build the extension from a local config file, it can already have a
+  server set. A plain install from this repository can't, because that file is
+  never committed. The server URL must use HTTPS, except for `localhost`,
+  `127.0.0.1` and `::1`. A stored URL that doesn't meet this is refused, and
+  the extension stays in local mode.
+- Sharing with another app needs a grant that you approve and can revoke.
+  Revoking deletes the grant and stops further reads, but it can't delete what
+  the other app already received. Free text you wrote and confidence scores are
+  never shared through a grant.
+- No user data goes to third parties other than the Gemini API (for AI
+  features), Fal.ai (if you set that key) and your own server (if you turn on
+  remote mode).
+- Both extensions ask for access to all sites (`<all_urls>`) to adapt any
+  page. The memory records only things you do on purpose (changing a setting,
+  applying a profile, saving an action or starting an agent task), not your
+  browsing or typing.
 
-- **Synced through your Google account** (`chrome.storage.sync`, which reaches every Chrome signed into the same account): your ability profile, suggestion suppressions, cross-app grants, extension settings, both API keys, and the remote server URL and token if remote mode is configured
-- **On this device only** (`chrome.storage.local`): the memory itself, meaning the observation log, memory shards, pending proposals, the site index, rendered views, the share-audit log, and saved skills
-- **Transmitted off the device only when a feature is configured for it**: page content to the Gemini API when a key is set; the needs description a user types during onboarding or in the builders, which is embedded in the recommendation and build prompts sent to the Gemini API; microphone audio streamed to the Gemini Live API while voice mode is active; media URLs to Fal.ai when that key is set; and Librarian calls, including your profile, to your own server when remote mode is on
-- **Sensitive sites**: banking, health, and government sites default to no-memory zones. That gates what is *remembered* about you there (nothing, unless you opt in per site), not whether a page is *adapted*
-- **Remote mode exists and is off by default.** If you configure a server URL and token in the options page, Librarian calls, including your profile, go to that server. A build made from a local config file can arrive with a server pre-configured; a plain install from this repository cannot, because that config file is never committed. The server URL must use https. Plain http is accepted only for `localhost`, `127.0.0.1` and `::1`, because your access token and your profile are sent to that address; a stored URL that does not meet this is refused and the extension stays in local mode
-- **Cross-app sharing goes through explicit grants** you approve and can revoke. Revoking removes the grant and stops all further reads; it does not reach into another app to delete what it already received. Free text you wrote and the system's confidence scores are never shared through grants
-- No user data is transmitted to third parties beyond the providers listed above: the Gemini API for AI features, Fal.ai for transcription if you set that key, and your own server if you enable remote mode
-- Custom adapters are linted before execution but are **not** sandboxed — they are registered as Chrome user scripts and run with full page access, which is why the extension warns users to only install adapters they trust
-- Both extensions request access to all sites (`<all_urls>`), which is what lets them adapt any page; the memory pipeline records only discrete acts you take (changing a setting, applying a profile, saving an action, starting an agent task), not your browsing or typing
+## Dependencies
 
-### Dependencies
+- We try to use as few dependencies as possible.
+- Bundled third-party code is pinned to exact versions and listed in
+  [VENDORED.md](VENDORED.md).
 
-- We minimize dependencies and audit them regularly
-- Bundled third-party code is version-locked and recorded in [VENDORED.md](VENDORED.md)
+## For contributors
 
-## Security Best Practices for Contributors
-
-1. Never use `innerHTML` with user/AI-generated content without escaping
-2. Avoid `eval()`, `Function()`, and similar dynamic code execution
-3. Use `textContent` for text-only insertions
-4. Validate all inputs from external sources (AI responses, user input)
-5. Keep dependencies up to date
-
-## Acknowledgments
-
-We thank our researchers and community members who help keep this project secure.
+1. Don't use `innerHTML` with user or AI-generated content unless you sanitize
+   it.
+2. Don't use `eval()`, `Function()` or similar.
+3. Use `textContent` to insert text.
+4. Validate everything from outside sources, including AI responses and user
+   input.
+5. Keep dependencies up to date.

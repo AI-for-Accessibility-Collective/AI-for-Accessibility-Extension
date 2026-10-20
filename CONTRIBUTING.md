@@ -13,21 +13,28 @@ This repository has the browser extensions and prototype web apps built on the
 
 ### Share feedback
 
-Try one of the extensions on pages you use, then open an issue about where it
-helped and where it got things wrong. If you'd rather not use GitHub, you can
-email us instead (see [SUPPORT.md](SUPPORT.md)).
+To try the extensions, follow [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)
+and use them on pages you visit. Then open an issue about what helped and what
+went wrong. If you'd rather not use GitHub, you can email us instead (see
+[SUPPORT.md](SUPPORT.md)).
 
 ### Improve the extensions
 
-Fix a bug or improve something in one of the folders above. For bigger
-changes, please open an issue first.
+The extensions' code is in the folders above. For example, you could fix a bug
+in the popup (`extension/src/popup/`) or in the Skill Builder
+(`personalized-extension/extension/skill-builder/`). Look through the
+[open issues](../../issues), or fix something you ran into. For bigger changes,
+please open an issue first.
 
 ### Add a skill, adapter, auditor or profile
 
-These live in the toolkit repository, so add them there (see its
-[CONTRIBUTING.md](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/CONTRIBUTING.md)).
-The extensions here include them after we update the copy of the toolkit in
-`vendor/`.
+A skill turns on a few adapters together for a specific need, e.g.,
+`calm-browsing` turns on reduced motion, dark mode and focus mode. An adapter
+is code that makes one change to a page, e.g., a reading ruler. These live in the
+toolkit repository, so add them there by following its
+[Adding to the catalog](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/docs/adding-to-the-catalog.md)
+guide. The extensions here include them after we update the copy of the
+toolkit in `vendor/`.
 
 ## Setting up
 
@@ -44,9 +51,9 @@ cd AI-for-Accessibility-Extension
    **Developer mode**, click **Load unpacked** and choose `extension/` or
    `personalized-extension/extension/`.
 
-You can load the extensions without building anything first. Keep Developer
-mode on for the personalized extension, as the adapters it generates run as
-user scripts.
+You can load the extensions without building anything. For the personalized
+extension, keep Developer mode on, and on Chrome 138 and later also turn on
+**Allow User Scripts** on its **Details** page.
 
 ## Building
 
@@ -63,7 +70,7 @@ by hand. CI checks that the committed files match a fresh build.
 
 ## Testing
 
-These two need no install:
+You can run these two without installing anything:
 
 ```bash
 npm test                  # Librarian tests
@@ -93,7 +100,7 @@ template, which asks:
 - Which parts does it affect?
 - Who does it help?
 - How did you test it?
-- If it changes a committed bundle, which build made it?
+- If it changes a committed bundle, which command built it, and in which repository?
 
 ## Working with people with disabilities
 
