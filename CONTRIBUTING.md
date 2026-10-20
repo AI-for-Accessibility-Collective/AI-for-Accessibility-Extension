@@ -100,6 +100,8 @@ here:
 ```markdown
 ## What does this PR do?
 
+<!-- A sentence or two. If it fixes an issue, add "Closes #123". -->
+
 ## Which parts of the repository does it change?
 
 - [ ] Original extension (`extension/`)
@@ -112,7 +114,7 @@ here:
 
 ## Who does it help?
 
-Which needs or profiles does this help?
+<!-- Which needs or profiles does this help? -->
 
 ## How did you test it?
 
