@@ -77,8 +77,8 @@ Currently open page URL: ${url}
 Currently open page title: ${title}
 
 Reply with exactly one word:
-CURRENT — if the task is about this page (e.g. "dismiss the cookie banner", "turn on captions", "summarize this article", or any phrasing implying "the page I'm on").
-NEW — if the task names a different site, asks to search or visit something else, or implies starting fresh.
+CURRENT — if the task is about this page or can be done on this site (e.g. "dismiss the cookie banner", "turn on captions", "summarize this article", "buy a phone charger" while on a store, or any phrasing implying "the page I'm on").
+NEW — if the task names a different site, needs something this site does not offer, or implies starting fresh.
 
 One word only.`;
   let raw;

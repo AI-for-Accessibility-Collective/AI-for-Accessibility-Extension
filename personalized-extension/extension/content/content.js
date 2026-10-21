@@ -1033,6 +1033,7 @@ async function wireAgentWatch() {
       verb: (last && PLAIN_ACTION[last.action]) || null,
       summary,
       options,
+      error: a.error || null,
     });
   };
   chrome.storage.local.get('bhAgent').then((r) => pushAgent(r.bhAgent));

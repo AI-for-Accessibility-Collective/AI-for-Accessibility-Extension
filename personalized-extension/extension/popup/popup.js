@@ -1443,6 +1443,17 @@ function setupAgentPanel() {
     });
   }
 
+  // Where the agent runs is remembered as well. It went back to Auto every
+  // time the popup opened, and Auto can send a request to a new tab, away
+  // from the page the person is on.
+  const tabModeSelect = document.getElementById('agentTabMode');
+  if (tabModeSelect) {
+    chrome.storage.local.get('agentTabMode', (d) => {
+      if (['auto', 'current', 'new'].includes(d.agentTabMode)) tabModeSelect.value = d.agentTabMode;
+    });
+    tabModeSelect.addEventListener('change', () => chrome.storage.local.set({ agentTabMode: tabModeSelect.value }));
+  }
+
   function renderAgent(state) {
     const s = state || { status: 'idle', log: [] };
     statusEl.textContent = s.status === 'preparing' ? 'getting ready' : (s.status || 'idle');
