@@ -846,19 +846,26 @@ ${getCurrentMemory()}` : "";
       action.key,
       action.reason
     ].filter(Boolean).join(" ");
-    try {
-      if (!await (V.ensureRunning?.() ?? V.isRunning())) return { allowed: true };
-      const scale = getImageScale() || 1;
-      const proposed = action.action === "click" ? { ...action, x: action.x / scale, y: action.y / scale } : action;
-      void V.previewAction?.(tabId, proposed);
-      const fresh = await V.beforeAction?.(tabId, action.action);
-      if (fresh?.allowed === false) return fresh;
-      const verdict = await V.allow(described, { step: getStep(), action: action.action });
-      if (!verdict.allowed) return verdict;
-      return await V.checkAction?.(tabId, proposed) || verdict;
-    } catch (e) {
-      console.error("[BrowserAgent] action check failed", e);
-      return { allowed: false, fatal: true, say: "I could not check this action. I stopped before changing the page." };
+    for (let attempt = 0; ; attempt++) {
+      try {
+        if (!await (V.ensureRunning?.() ?? V.isRunning())) return { allowed: true };
+        const scale = getImageScale() || 1;
+        const proposed = action.action === "click" ? { ...action, x: action.x / scale, y: action.y / scale } : action;
+        void V.previewAction?.(tabId, proposed);
+        const fresh = await V.beforeAction?.(tabId, action.action);
+        if (fresh?.allowed === false) return fresh;
+        const verdict = await V.allow(described, { step: getStep(), action: action.action });
+        if (!verdict.allowed) return verdict;
+        return await V.checkAction?.(tabId, proposed) || verdict;
+      } catch (e) {
+        const slow = ["AbortError", "TimeoutError"].includes(e?.name) || /aborted|timed? out|timeout|fetch failed|network error|\b(?:429|500|502|503|504)\b/i.test(e?.message || "");
+        if (!attempt && slow) {
+          console.warn("[BrowserAgent] action check was slow, checking once more", e);
+          continue;
+        }
+        console.error("[BrowserAgent] action check failed", e);
+        return { allowed: false, fatal: true, say: "I could not check this action. I stopped before changing the page." };
+      }
     }
   }
   var HELD_POLL_MS = 1500;

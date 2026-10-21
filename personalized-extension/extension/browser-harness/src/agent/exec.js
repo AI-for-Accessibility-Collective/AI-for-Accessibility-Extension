@@ -96,6 +96,9 @@ async function _bhAgentGate(tabId, action) {
   const described = [action.action, _bhDescribeTarget(tabId, action), action.text,
                      action.selector, action.url, action.key, action.reason]
     .filter(Boolean).join(' ');
+  // The model reads already retry once inside 75 s, but a slow stretch can outlast that, and a
+  // single timeout then ended the whole task. One more try here still stops if that fails too.
+  for (let attempt = 0; ; attempt++) {
   try {
     if (!(await (V.ensureRunning?.() ?? V.isRunning()))) return { allowed: true };
     const scale = getImageScale() || 1;
@@ -112,8 +115,12 @@ async function _bhAgentGate(tabId, action) {
     if (!verdict.allowed) return verdict;
     return await V.checkAction?.(tabId, proposed) || verdict;
   } catch (e) {
+    const slow = ['AbortError', 'TimeoutError'].includes(e?.name)
+      || /aborted|timed? out|timeout|fetch failed|network error|\b(?:429|500|502|503|504)\b/i.test(e?.message || '');
+    if (!attempt && slow) { console.warn('[BrowserAgent] action check was slow, checking once more', e); continue; }
     console.error('[BrowserAgent] action check failed', e);
     return { allowed: false, fatal: true, say: 'I could not check this action. I stopped before changing the page.' };
+  }
   }
 }
 
