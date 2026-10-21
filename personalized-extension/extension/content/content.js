@@ -1038,9 +1038,16 @@ async function wireAgentWatch() {
   };
   chrome.storage.local.get('bhAgent').then((r) => pushAgent(r.bhAgent));
 
+  // The side panel shows the same run. While it has the person's focus it
+  // speaks, so the overlay stays quiet and leaves focus where it is.
+  let panelFocused = false;
+  AgentWatch.isQuiet = () => panelFocused;
+  chrome.storage.local.get('aa.sidePanelFocus').then((r) => { panelFocused = r['aa.sidePanelFocus'] === true; });
+
   const push = (state) => { try { AgentWatch.update(state); } catch (e) { console.warn(e); } };
   chrome.storage.local.get(AA_VALIDATION_KEY).then((r) => push(r[AA_VALIDATION_KEY]));
   chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes['aa.sidePanelFocus']) panelFocused = changes['aa.sidePanelFocus'].newValue === true;
     if (area === 'local' && changes[AA_VALIDATION_KEY]) push(changes[AA_VALIDATION_KEY].newValue);
     if (area === 'local' && changes.bhAgent) pushAgent(changes.bhAgent.newValue);
   });

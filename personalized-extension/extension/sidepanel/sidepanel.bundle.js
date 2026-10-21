@@ -183,8 +183,24 @@
   var KEY = "aa.validation";
   function mountValidationPanel(root, { onControl } = {}) {
     root.classList.add("va");
-    root.setAttribute("aria-live", "polite");
-    root.setAttribute("aria-relevant", "additions text");
+    const heard = document.createElement("div");
+    heard.className = "va-heard";
+    heard.setAttribute("role", "log");
+    heard.setAttribute("aria-live", "polite");
+    heard.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap";
+    root.before(heard);
+    let announced = null;
+    let overlayOn = false;
+    const hasFocus = () => document.hasFocus?.() === true;
+    const flag = (on) => Promise.resolve(chrome.storage?.local?.set?.({ "aa.sidePanelFocus": on })).catch(() => {
+    });
+    globalThis.addEventListener?.("focus", () => flag(hasFocus()));
+    globalThis.addEventListener?.("blur", () => flag(hasFocus()));
+    globalThis.addEventListener?.("pagehide", () => flag(false));
+    flag(hasFocus());
+    chrome.storage.sync?.get?.("agentWatch")?.then?.((s) => {
+      overlayOn = s.agentWatch === true;
+    });
     let state = null;
     let checksOn = false;
     let editing = null;
@@ -711,12 +727,37 @@
       if (c.deadline) bits.push(`by ${c.deadline}`);
       return `${bits.filter(Boolean).join(", ")}.`;
     }
+    function announceNew() {
+      const key = (f) => `${state?.taskId}|${f.widget}|${f.say}`;
+      const fs = asList(state?.findings);
+      if (announced === null) {
+        announced = new Set(fs.map(key));
+        return;
+      }
+      const here = hasFocus();
+      const lines = [];
+      for (const f of fs) {
+        if (announced.has(key(f))) continue;
+        announced.add(key(f));
+        if (f.level === "aside" && f.say && (here || !overlayOn)) lines.push(f.say);
+      }
+      const lead = state?.gate?.allowed === false ? state.gate.leading : null;
+      const gateKey = `${state?.taskId}|gate|${lead}`;
+      if (lead && !announced.has(gateKey)) {
+        announced.add(gateKey);
+        if (!here && !overlayOn) lines.push(`Waiting for you. ${decisionMessage(state)}`);
+      }
+      for (const line of lines) heard.append(el("p", null, line));
+      while (heard.childNodes.length > 4) heard.firstChild.remove();
+    }
     Promise.all([chrome.storage.local.get(KEY), chrome.storage.sync?.get?.("verificationLayer") ?? {}]).then(([r, s]) => {
       state = r[KEY] || null;
       checksOn = s.verificationLayer === true;
+      announceNew();
       render();
     });
     chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "sync" && changes.agentWatch) overlayOn = changes.agentWatch.newValue === true;
       if (area === "sync" && changes.verificationLayer) {
         checksOn = changes.verificationLayer.newValue === true;
         render();
@@ -724,6 +765,7 @@
       }
       if (area !== "local" || !changes[KEY]) return;
       state = changes[KEY].newValue;
+      announceNew();
       render();
     });
     return { render, get state() {

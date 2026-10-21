@@ -24,11 +24,29 @@ const KEY = 'aa.validation';
 
 export function mountValidationPanel(root, { onControl } = {}) {
   root.classList.add('va');
-  root.setAttribute('aria-live', 'polite');
-  // The spoken channel is the primary one for a screen-reader user; this
-  // surface is secondary, so its live region is polite and its updates never
-  // steal focus. The gate is the exception and manages focus explicitly.
-  root.setAttribute('aria-relevant', 'additions text');
+  // Not a live region. Every update rebuilds this whole panel, and a live
+  // root made a screen reader read all of it again after each new line. New
+  // lines are announced once each through `heard` below; the gate manages
+  // focus itself.
+  const heard = document.createElement('div');
+  heard.className = 'va-heard';
+  heard.setAttribute('role', 'log');
+  heard.setAttribute('aria-live', 'polite');
+  heard.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap';
+  root.before(heard);
+  let announced = null;     // widgets already announced; null until the first state arrives
+  let overlayOn = false;    // the page overlay is on, and speaks when focus is in the page
+
+  // One voice at a time. While this panel has focus it speaks and the page
+  // overlay stays quiet; with focus in the page, the overlay speaks. The page
+  // reads this flag.
+  const hasFocus = () => document.hasFocus?.() === true;
+  const flag = (on) => Promise.resolve(chrome.storage?.local?.set?.({ 'aa.sidePanelFocus': on })).catch(() => {});
+  globalThis.addEventListener?.('focus', () => flag(hasFocus()));
+  globalThis.addEventListener?.('blur', () => flag(hasFocus()));
+  globalThis.addEventListener?.('pagehide', () => flag(false));
+  flag(hasFocus());
+  chrome.storage.sync?.get?.('agentWatch')?.then?.((s) => { overlayOn = s.agentWatch === true; });
 
   let state = null;
   let checksOn = false;     // the one setting: is the agent's work checked?
@@ -644,13 +662,41 @@ export function mountValidationPanel(root, { onControl } = {}) {
     return `${bits.filter(Boolean).join(', ')}.`;
   }
 
+  // Each line said while the agent keeps going is announced once. A new
+  // question is announced only when focus is elsewhere and the page overlay is
+  // off: with focus here the gate takes it, and with focus in the page the
+  // overlay asks there. Lines already there when the panel opens are not read
+  // out again.
+  function announceNew() {
+    const key = (f) => `${state?.taskId}|${f.widget}|${f.say}`;
+    const fs = asList(state?.findings);
+    if (announced === null) { announced = new Set(fs.map(key)); return; }
+    const here = hasFocus();
+    const lines = [];
+    for (const f of fs) {
+      if (announced.has(key(f))) continue;
+      announced.add(key(f));
+      if (f.level === 'aside' && f.say && (here || !overlayOn)) lines.push(f.say);
+    }
+    const lead = state?.gate?.allowed === false ? state.gate.leading : null;
+    const gateKey = `${state?.taskId}|gate|${lead}`;
+    if (lead && !announced.has(gateKey)) {
+      announced.add(gateKey);
+      if (!here && !overlayOn) lines.push(`Waiting for you. ${decisionMessage(state)}`);
+    }
+    for (const line of lines) heard.append(el('p', null, line));
+    while (heard.childNodes.length > 4) heard.firstChild.remove();
+  }
+
   Promise.all([chrome.storage.local.get(KEY), chrome.storage.sync?.get?.('verificationLayer') ?? {}]).then(([r, s]) => {
-    state = r[KEY] || null; checksOn = s.verificationLayer === true; render();
+    state = r[KEY] || null; checksOn = s.verificationLayer === true; announceNew(); render();
   });
   chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.agentWatch) overlayOn = changes.agentWatch.newValue === true;
     if (area === 'sync' && changes.verificationLayer) { checksOn = changes.verificationLayer.newValue === true; render(); return; }
     if (area !== 'local' || !changes[KEY]) return;
     state = changes[KEY].newValue;
+    announceNew();
     render();
   });
 

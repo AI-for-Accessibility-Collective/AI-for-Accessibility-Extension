@@ -27,6 +27,9 @@ global.requestAnimationFrame = (f) => setTimeout(f, 0);
 global.matchMedia = () => ({ matches: false, addEventListener() {}, addListener() {} });
 
 const { AgentWatch } = await import('@ai4a11y/tools/adapters/agent-watch.js');
+const { setAIProvider } = await import('@ai4a11y/tools/utils/ai.js');
+const heard = [];
+setAIProvider({ announce: (m) => heard.push(m) });
 const { toFindings } = await import('../extension/validation/reasoner.js');
 
 let pass = 0; let fail = 0;
@@ -100,8 +103,11 @@ AgentWatch.enable({ model: MODEL });
   const gate = root.querySelector('.aw-gate');
   ok(!!gate, 'a held finding renders as the gate, not as a queued aside');
   ok(gate?.getAttribute('role') === 'alertdialog', 'the gate is an alertdialog');
-  ok(gate?.getAttribute('aria-live') === 'assertive',
-    'the gate interrupts rather than waiting for a gap');
+  ok(!gate?.hasAttribute('aria-live'),
+    'the gate is not also a live region, which read the question twice');
+  await new Promise((r) => setTimeout(r, 5));
+  ok(gate?.contains(document.activeElement),
+    'the gate takes focus, so a screen reader reads it where the person lands');
   const labels = [...gate.querySelectorAll('button')].map((b) => b.textContent.trim());
   ok(!labels.includes('Got it'),
     'declining a hold does not mean "understood"');
@@ -120,8 +126,13 @@ AgentWatch.enable({ model: MODEL });
   });
   const wheel = root.querySelector('.aw-wheel');
   ok(!!wheel, 'the person holding a part of the task is shown that they do');
-  ok(wheel?.getAttribute('role') === 'status',
-    'holding the wheel is a state, announced politely, not an alert');
+  ok(!wheel?.hasAttribute('role'),
+    'holding the wheel is not a status region, which repeated it on every update');
+  ok(heard.some((h) => /You have this part: Pick the size/.test(h)),
+    'taking the part is announced once, by name');
+  AgentWatch.update({ ...BASE, holder: 'person', handOverNode: '2.2', handOverNodeLabel: 'Pick the size' });
+  ok(heard.filter((h) => /You have this part/.test(h)).length === 1,
+    'and not again on the next update');
   ok(/Pick the size/.test(wheel?.textContent || ''),
     'it names the part they took, not just that they took one');
 
