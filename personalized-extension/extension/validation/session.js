@@ -1939,11 +1939,20 @@ const Validation = {
         return { allowed: false, replan: true, say: result.reason };
       }
     }
-    const say = canApprove ? result.label : result.requestQuote
-      ? `I stopped this action because your request says: “${result.requestQuote}”`
+    // Something chosen earlier is not what is about to be committed (a sold-out item swapped for
+    // another, say). The person hears that first, and can send the agent back instead.
+    const changes = canApprove ? result.changes || [] : [];
+    const changed = changes.map(c => `${c.what.charAt(0).toLowerCase()}${c.what.slice(1)} was ${c.before}, and is now ${c.now}`).join('. ');
+    const say = canApprove ? (changed ? `This isn't what was chosen earlier: ${changed}. ${result.label}?` : result.label)
+      : result.requestQuote ? `I stopped this action because your request says: “${result.requestQuote}”`
       : 'I could not confirm this action is ready. You can take over or stop here.';
     const choices = canApprove ? [{ id: 'approve', label: result.approvalLabel || result.label, action: 'approve',
       instruction: result.label, expected: result.expected, quote: result.quote, facts: result.facts || [] }] : [];
+    if (changed) {
+      choices.push({ id: 'decline-change', label: 'Don’t go ahead. Show me what still fits', action: 'revise',
+        instruction: `Do not complete this. ${changed}. Go back, find the options that still meet the request, and ask me before committing to one.`,
+        expected: '', quote: changes[0].nowQuote });
+    }
     choices.push({ id: 'handover', label: 'Let me do this part', action: 'handover',
       instruction: 'Hand this part to the person.', expected: '', quote: result.quote || '' });
     const widget = 'Review the next action';

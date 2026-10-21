@@ -2877,7 +2877,8 @@ Rejected decisions and independent reviews: ${JSON.stringify(refinements)}`,
     reason: str,
     label: str,
     expected: str,
-    facts: CHOICE_SCHEMA.properties.facts
+    facts: CHOICE_SCHEMA.properties.facts,
+    changes: list(object({ what: str, before: str, beforeQuote: str, now: str, nowQuote: str }))
   });
   async function reviewAction(call, { request, page, links = [], action, target, pending, answers = [], pages = [] }) {
     const targeted = /* @__PURE__ */ new Set(["click", "click_index", "type", "type_index", "fill_input", "select_dropdown", "press_key", "upload_file"]);
@@ -2904,6 +2905,7 @@ Classify reversible only for a task-consistent change that does not commit money
 Judge the effect, not the button's verb: saving an explicitly requested private draft or preparing recipient settings without granting access or sending an invitation is reversible when the page confirms that limited effect. A later Share/Send control remains a separate commitment and any prohibition still applies.
 This is a classification BEFORE approval, not permission to execute. Returning commit makes the runtime ask the person and hold the action. A request such as "submit after I approve" therefore requires commit when all other requirements are met; missing approval alone is NOT blocked. An unconditional prohibition such as "draft only, do not send" IS blocked. Do not assume that consent has already been given, or that classifying a commitment executes it.
 The label is the person's approval button, not an internal action description. Name the selected item or service and the consequence in ordinary words. For example, when supported by the CURRENT page: "Return blue jacket, $80 to original card"; "Book Oak Clinic, October 16 at 15:30"; "Buy Bay Express ticket for $88". "Submit return request" or "Book appointment" omits what the person is approving. Keep recurring charges and fee qualifiers. Do not pack all fact rows into the label or claim that the action has already happened. These examples are wording only, never evidence.
+For commit, also compare the commitment with what was chosen before it. Look at the most recent earlier page that showed the cart, basket or order (or, if none did, the page where the item was picked) and fill changes with each product, quantity, size, color or option that page had and the current page no longer has: a different product in its place, an item dropped or added, another size or color. A site swapping a sold-out item for another one is exactly this, even when the page mentions it only in small print. Do not count prices or fees that differ only because of a delivery or option chosen on the current page. For each change, what is a short noun for the thing that changed, such as "The charger" or "The size". before and now are short, such as a product's name without the list of keywords after it, each copied from inside its quote. before is how the earlier page had it and beforeQuote an exact excerpt of that earlier page containing it, now is how the current page has it and nowQuote an exact excerpt of the current page containing it. Use [] when nothing changed and for non-commit actions.
 For commit give a standalone label naming what is committed and the amount/recipient when present, and expected as the observable confirmation to check afterward. Also give facts: up to six short named attributes of this exact commitment that the person needs to review before approving it (selected item or service, date/time, people or recipients, total and cancellation/privacy terms when shown). Include only the CURRENT selected state, never another available option or an earlier page. Each fact is {name,value,quote}; copy value from its own exact current-page quote, preserving price qualifiers and units. These facts appear directly above the approval button. Do not invent missing details or repeat generic button text as a fact. Use [] for non-commit actions. quote must be exact CURRENT page evidence of the target/effect, never a quote from these instructions or the actual tool arguments. For navigation you may quote an observed link URL or its text. A URL supplied only by the actor is not observed evidence. Use unknown if evidence is insufficient.`, ACTION_SCHEMA);
     let requestCheck = r.requestCheck;
     const instructions = [request, ...answers.filter((a) => ["select", "revise", "search", "approve"].includes(a.action)).map((a) => `${a.label}
@@ -2944,6 +2946,7 @@ Return up to six facts with name, value and quote. Every quote must be a short c
       }
       r.facts = repaired.facts;
     }
+    r.changes = (r.kind === "commit" && Array.isArray(r.changes) ? r.changes : []).filter((c) => text(c?.what) && text(c.before) && text(c.now) && normalized(c.before) !== normalized(c.now) && present(c.nowQuote, page) && normalized(c.nowQuote).includes(normalized(c.now)) && normalized(String(c.beforeQuote || "")).includes(normalized(c.before)) && (Array.isArray(pages) ? pages : []).some((p) => present(c.beforeQuote, String(p?.text || "")))).slice(0, 3);
     if (r.kind === "commit" && (!["click", "click_index"].includes(action.action) || !target?.backendNodeId)) {
       return { kind: "unknown", reason: "Use an explicit control for this action or take over." };
     }
@@ -6540,7 +6543,9 @@ Include every id once. moneyMoving means the guarded step commits money, sends/s
           return { allowed: false, replan: true, say: result.reason };
         }
       }
-      const say = canApprove ? result.label : result.requestQuote ? `I stopped this action because your request says: \u201C${result.requestQuote}\u201D` : "I could not confirm this action is ready. You can take over or stop here.";
+      const changes = canApprove ? result.changes || [] : [];
+      const changed = changes.map((c) => `${c.what.charAt(0).toLowerCase()}${c.what.slice(1)} was ${c.before}, and is now ${c.now}`).join(". ");
+      const say = canApprove ? changed ? `This isn't what was chosen earlier: ${changed}. ${result.label}?` : result.label : result.requestQuote ? `I stopped this action because your request says: \u201C${result.requestQuote}\u201D` : "I could not confirm this action is ready. You can take over or stop here.";
       const choices = canApprove ? [{
         id: "approve",
         label: result.approvalLabel || result.label,
@@ -6550,6 +6555,16 @@ Include every id once. moneyMoving means the guarded step commits money, sends/s
         quote: result.quote,
         facts: result.facts || []
       }] : [];
+      if (changed) {
+        choices.push({
+          id: "decline-change",
+          label: "Don\u2019t go ahead. Show me what still fits",
+          action: "revise",
+          instruction: `Do not complete this. ${changed}. Go back, find the options that still meet the request, and ask me before committing to one.`,
+          expected: "",
+          quote: changes[0].nowQuote
+        });
+      }
       choices.push({
         id: "handover",
         label: "Let me do this part",

@@ -36,6 +36,7 @@ const TESTS = [
   'test/task-entrypoints-test.mjs',
   'test/decision-test.mjs',
   'test/runtime-test.mjs',
+  'test/changed-commit-test.mjs',
   'test/long-horizon-test.mjs',
   'test/attention-test.mjs',
   'test/decision-quality-test.mjs',
