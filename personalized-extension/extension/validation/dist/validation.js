@@ -5157,6 +5157,8 @@ Include every id once. moneyMoving means the guarded step commits money, sends/s
   var modelSource = null;
   var modelRevision = 0;
   var runEpoch = 0;
+  var pageMoves = 0;
+  var pageMoved = (say) => ++pageMoves <= 2 ? { allowed: false, replan: true } : { allowed: false, fatal: true, say };
   var hydration = null;
   var canRehydrate = true;
   var readSequence = 0;
@@ -6208,6 +6210,7 @@ Include every id once. moneyMoving means the guarded step commits money, sends/s
       readSequence++;
       observation = null;
       activeNodes = [];
+      pageMoves = 0;
       const epoch = runEpoch;
       evidencePages = [];
       actionReviews = /* @__PURE__ */ new Map();
@@ -6441,7 +6444,7 @@ Include every id once. moneyMoving means the guarded step commits money, sends/s
         snap = await globalThis.BrowserHarness.axSnapshot(tabId);
         if (epoch === runEpoch && observation?.modelRevision === modelRevision && observation?.tabId === tabId && observation?.url === snap.url && observation?.hash === hashText2(snap.text)) return { allowed: true };
       }
-      return { allowed: false, fatal: true, say: "I could not check the current page. I stopped before changing it." };
+      return pageMoved("I could not check the current page. I stopped before changing it.");
     },
     async checkPending(tabId, snap) {
       const pending = runtimeState.pending.filter((p) => p.status !== "satisfied");
@@ -6483,7 +6486,7 @@ Include every id once. moneyMoving means the guarded step commits money, sends/s
       const H = globalThis.BrowserHarness;
       const target = await H.describeActionTarget?.(tabId, action) || null;
       const snap = await H.axSnapshot(tabId);
-      if (!current() || observation?.tabId !== tabId || observation?.url !== snap.url || hash !== hashText2(snap.text)) return { allowed: false, fatal: true, say: "The page changed before I could check the action." };
+      if (!current() || observation?.tabId !== tabId || observation?.url !== snap.url || hash !== hashText2(snap.text)) return pageMoved("The page changed before I could check the action.");
       const key = await actionKey(action, target);
       const review = () => reviewActionOnce(actionReviewInput(tabId, snap, action, target));
       let result = await review();
@@ -6495,7 +6498,8 @@ Include every id once. moneyMoving means the guarded step commits money, sends/s
       const fresh = await H.axSnapshot(tabId);
       const freshTarget = await H.describeActionTarget?.(tabId, action) || null;
       const freshKey = await actionKey(action, freshTarget);
-      if (!current() || snap.url !== fresh.url || hash !== hashText2(fresh.text) || key !== freshKey || JSON.stringify(snap.links || []) !== JSON.stringify(fresh.links || [])) return { allowed: false, fatal: true, say: "The page changed before I could check the action." };
+      if (!current() || snap.url !== fresh.url || hash !== hashText2(fresh.text) || key !== freshKey || JSON.stringify(snap.links || []) !== JSON.stringify(fresh.links || [])) return pageMoved("The page changed before I could check the action.");
+      pageMoves = 0;
       const binding = {
         taskId: runOpts.taskId,
         epoch,

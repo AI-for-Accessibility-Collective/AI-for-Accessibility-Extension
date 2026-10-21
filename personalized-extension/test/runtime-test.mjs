@@ -644,3 +644,19 @@ const savingsReview=await reviewAction(async()=>JSON.stringify({...commitReply,q
  label:'Subscribe for $88 per month',facts:[]}),savingsContext);
 assert.equal(savingsReview.approvalLabel,'Subscribe for $88 per month','a savings promotion must not replace the actual recurring charge');
 console.log('PASS promotional savings do not replace a reviewed commitment price');
+
+// A page that moves by itself during the check (a suggestion list closing as focus goes to the
+// side panel) sends the agent back to look again. A page that keeps moving still stops the task.
+page='Search. USB-C charger. Search suggestions: Pebble Power 20W USB-C charger.';
+await start('Buy a USB-C charger'); actionKind='reversible'; decision=null; target={backendNodeId:41,tag:'BUTTON',label:'Search'};
+await V.observe(1);
+const search={action:'click_index',index:2};
+page='Search. USB-C charger.';
+assert.equal((await V.checkAction(1,search)).replan,true,'a page that moved once is looked at again');
+assert.equal((await V.checkAction(1,search)).replan,true,'and a second time');
+const moving=await V.checkAction(1,search);
+assert.equal(moving.fatal,true,'a page that keeps moving stops the task');
+assert.equal(moving.allowed,false,'the action is never performed unchecked');
+await V.observe(1);
+assert.equal((await V.checkAction(1,search)).allowed,true,'the settled page is checked as usual');
+console.log('PASS a page that moves during the check is looked at again before the task stops');

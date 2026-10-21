@@ -187,6 +187,13 @@ let srcModel = null;
 let modelSource = null;
 let modelRevision = 0;
 let runEpoch = 0;
+// A page that changes by itself while an action is checked (a suggestion list
+// closing when focus moves to the side panel, a banner turning) used to end the
+// task. The action is still never performed unchecked: the agent looks at the
+// page again, and only a page that keeps changing three times running stops it.
+let pageMoves = 0;
+const pageMoved = (say) => (++pageMoves <= 2 ? { allowed: false, replan: true }
+  : { allowed: false, fatal: true, say });
 let hydration = null;
 // Only a newly awakened worker restores a stored task. After an explicit
 // Start or Stop, storage may still contain the old task until publish settles.
@@ -1564,7 +1571,7 @@ const Validation = {
       opts = { ...opts, requireModel: true };
     }
     canRehydrate = false;
-    runEpoch++; readSequence++; observation = null; activeNodes = [];
+    runEpoch++; readSequence++; observation = null; activeNodes = []; pageMoves = 0;
     const epoch = runEpoch;
     evidencePages = []; actionReviews = new Map();
     runtimeState = emptyRuntime();
@@ -1834,7 +1841,7 @@ const Validation = {
         && observation?.tabId === tabId && observation?.url === snap.url
         && observation?.hash === hashText(snap.text)) return { allowed: true };
     }
-    return { allowed: false, fatal: true, say: 'I could not check the current page. I stopped before changing it.' };
+    return pageMoved('I could not check the current page. I stopped before changing it.');
   },
 
   async checkPending(tabId, snap) {
@@ -1878,7 +1885,7 @@ const Validation = {
     const target = await H.describeActionTarget?.(tabId, action) || null;
     const snap = await H.axSnapshot(tabId);
     if (!current() || observation?.tabId !== tabId || observation?.url !== snap.url
-      || hash !== hashText(snap.text)) return { allowed: false, fatal: true, say: 'The page changed before I could check the action.' };
+      || hash !== hashText(snap.text)) return pageMoved('The page changed before I could check the action.');
     const key = await actionKey(action, target);
     const review = () => reviewActionOnce(actionReviewInput(tabId, snap, action, target));
     let result = await review();
@@ -1894,7 +1901,8 @@ const Validation = {
     const freshTarget = await H.describeActionTarget?.(tabId, action) || null;
     const freshKey = await actionKey(action, freshTarget);
     if (!current() || snap.url !== fresh.url || hash !== hashText(fresh.text)
-      || key !== freshKey || JSON.stringify(snap.links || []) !== JSON.stringify(fresh.links || [])) return { allowed: false, fatal: true, say: 'The page changed before I could check the action.' };
+      || key !== freshKey || JSON.stringify(snap.links || []) !== JSON.stringify(fresh.links || [])) return pageMoved('The page changed before I could check the action.');
+    pageMoves = 0;
     const binding = { taskId: runOpts.taskId, epoch, revision, hash, url: snap.url, tabId,
       key, target, action, kind: result.kind, expected: result.expected };
     if (result.kind === 'reversible') return { allowed: true, binding };
