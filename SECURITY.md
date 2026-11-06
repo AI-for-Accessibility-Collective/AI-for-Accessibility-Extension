@@ -23,8 +23,8 @@ There are no releases yet, so only the latest `main` branch is supported.
 Please don't open a public issue.
 
 1. Go to this repository's **Security** tab and click **Report a
-   vulnerability**. If you can't, email the address in
-   [MAINTAINERS.md](MAINTAINERS.md).
+   vulnerability**. If you can't, email
+   ai4a11y-collective-contact@googlegroups.com.
 
 2. Include a description, steps to reproduce, the possible impact, and a fix
    if you have one.
