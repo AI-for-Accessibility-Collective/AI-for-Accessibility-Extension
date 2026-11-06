@@ -13,7 +13,9 @@ This repository has two Chrome extensions from the AI for Accessibility
 Collective. On the websites you visit, they can make text bigger, turn the page
 dark, stop moving content, describe pictures, add captions and rewrite
 complicated text in plainer language. The personalized extension also learns
-what helps you over time and suggests changes.
+what helps you over time and suggests changes. For more about the project,
+including a short video, see the Collective's website,
+[aiforaccessibilitycollective.org](https://aiforaccessibilitycollective.org).
 
 This is an early research version. Things may break or change, and we haven't
 yet tested how well the page fixes work for any particular person. Please keep
